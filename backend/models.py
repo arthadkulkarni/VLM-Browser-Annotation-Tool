@@ -13,6 +13,8 @@ class Video(db.Model):
 
     # Metadata fields
     title = db.Column(db.String(500), nullable=False)
+    description = db.Column(db.Text)  # Video description
+    topic = db.Column(db.String(200))  # Video topic/category
     duration = db.Column(db.Integer)  # Duration in seconds
     notes = db.Column(db.Text)
 
@@ -28,6 +30,8 @@ class Video(db.Model):
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'title': self.title,
+            'description': self.description,
+            'topic': self.topic,
             'duration': self.duration,
             'notes': self.notes
         }

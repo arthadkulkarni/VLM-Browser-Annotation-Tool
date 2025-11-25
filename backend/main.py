@@ -11,11 +11,12 @@ load_dotenv()
 app = Flask(__name__)
 CORS(app)
 
-# Database configuration
-app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get(
-    'DATABASE_URL',
-    'postgresql://localhost/video_annotation'
-)
+# Database configuration - PostgreSQL only
+database_url = os.environ.get('DATABASE_URL')
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable is not set. Please configure PostgreSQL connection in .env file")
+
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
@@ -40,8 +41,28 @@ def home():
 @app.route('/api/submit_video', methods=['POST'])
 def submit_video_url():
     """
-    Endpoint to receive a video URL for processing.
-    Expects JSON body with 'url' and 'title' fields.
+    Endpoint to receive video data from JSON file.
+    Expects JSON body with video metadata, and optionally queries and annotations.
+
+    Expected format:
+    {
+        "url": "video_url",
+        "title": "video_title",
+        "description": "video_description" (optional),
+        "topic": "video_topic" (optional),
+        "queries": [  (optional)
+            {
+                "query_text": "query text",
+                "annotations": [  (optional)
+                    {
+                        "start_timestamp": "00:00:00",
+                        "end_timestamp": "00:00:05",
+                        "notes": "description"
+                    }
+                ]
+            }
+        ]
+    }
     """
     try:
         data = request.get_json()
@@ -60,6 +81,8 @@ def submit_video_url():
 
         video_url = data['url']
         video_title = data['title']
+        video_description = data.get('description', '')
+        video_topic = data.get('topic', '')
 
         # Validate URL is not empty
         if not video_url.strip():
@@ -75,18 +98,58 @@ def submit_video_url():
                 'message': 'Video title cannot be empty'
             }), 400
 
-        # Save video URL to database
-        video = Video(url=video_url, title=video_title, status='pending')
+        # Create video record
+        video = Video(
+            url=video_url,
+            title=video_title,
+            description=video_description,
+            topic=video_topic,
+            status='pending'
+        )
         db.session.add(video)
+        db.session.flush()  # Get video ID before committing
+
+        # Process queries if provided
+        queries_data = data.get('queries', [])
+        created_queries = []
+        created_annotations = []
+
+        for query_item in queries_data:
+            if 'query_text' in query_item and query_item['query_text'].strip():
+                # Create query
+                query = Query(
+                    video_id=video.id,
+                    query_text=query_item['query_text']
+                )
+                db.session.add(query)
+                db.session.flush()  # Get query ID before processing annotations
+                created_queries.append(query.to_dict())
+
+                # Process annotations if provided
+                annotations_data = query_item.get('annotations', [])
+                for annotation_item in annotations_data:
+                    if 'notes' in annotation_item:
+                        annotation = Annotation(
+                            query_id=query.id,
+                            start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
+                            end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
+                            notes=annotation_item['notes']
+                        )
+                        db.session.add(annotation)
+                        created_annotations.append(annotation_item)
+
         db.session.commit()
 
         return jsonify({
             'status': 'success',
-            'message': 'Video URL saved to database',
-            'video': video.to_dict()
+            'message': 'Video data saved to database',
+            'video': video.to_dict(),
+            'queries_created': len(created_queries),
+            'annotations_created': len(created_annotations)
         }), 201
 
     except Exception as e:
+        db.session.rollback()
         return jsonify({
             'error': 'Server error',
             'message': str(e)
@@ -243,6 +306,43 @@ def get_queries(video_id):
         }), 500
 
 
+@app.route('/api/queries/<int:query_id>', methods=['PUT'])
+def update_query(query_id):
+    """Update a specific query"""
+    try:
+        query = Query.query.get(query_id)
+        if not query:
+            return jsonify({
+                'error': 'Not found',
+                'message': f'Query with ID {query_id} not found'
+            }), 404
+
+        data = request.get_json()
+
+        if 'query_text' in data:
+            if not data['query_text'].strip():
+                return jsonify({
+                    'error': 'Empty query',
+                    'message': 'Query text cannot be empty'
+                }), 400
+            query.query_text = data['query_text']
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': 'Query updated successfully',
+            'query': query.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Server error',
+            'message': str(e)
+        }), 500
+
+
 @app.route('/api/queries/<int:query_id>', methods=['DELETE'])
 def delete_query(query_id):
     """Delete a specific query"""
@@ -386,28 +486,12 @@ def update_annotation(annotation_id):
         data = request.get_json()
 
         # Update fields if provided
-        if 'annotation_type' in data:
-            if data['annotation_type'] not in ['grounding', 'counting', 'both']:
-                return jsonify({
-                    'error': 'Invalid annotation type',
-                    'message': 'annotation_type must be "grounding", "counting", or "both"'
-                }), 400
-            annotation.annotation_type = data['annotation_type']
-
-        if 'bounding_boxes' in data:
-            annotation.bounding_boxes = data['bounding_boxes']
-        if 'timestamp' in data:
-            annotation.timestamp = data['timestamp']
-        if 'frame_number' in data:
-            annotation.frame_number = data['frame_number']
-        if 'object_count' in data:
-            annotation.object_count = data['object_count']
-        if 'object_type' in data:
-            annotation.object_type = data['object_type']
+        if 'start_timestamp' in data:
+            annotation.start_timestamp = data['start_timestamp']
+        if 'end_timestamp' in data:
+            annotation.end_timestamp = data['end_timestamp']
         if 'notes' in data:
             annotation.notes = data['notes']
-        if 'confidence_score' in data:
-            annotation.confidence_score = data['confidence_score']
 
         db.session.commit()
 
@@ -446,6 +530,9 @@ def delete_annotation(annotation_id):
 
     except Exception as e:
         db.session.rollback()
+        print(f"Error deleting annotation: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({
             'error': 'Server error',
             'message': str(e)

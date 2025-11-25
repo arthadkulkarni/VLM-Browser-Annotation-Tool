@@ -35,8 +35,7 @@ const getVideoEmbedInfo = (url) => {
 
 function App() {
   const [activeTab, setActiveTab] = useState('submit')
-  const [url, setUrl] = useState('')
-  const [title, setTitle] = useState('')
+  const [selectedFile, setSelectedFile] = useState(null)
   const [videos, setVideos] = useState([])
   const [message, setMessage] = useState('')
   const [loading, setLoading] = useState(false)
@@ -50,33 +49,74 @@ function App() {
     end_timestamp: '00:00:00',
     notes: ''
   })
+  const [jsonPreview, setJsonPreview] = useState(null)
+  const [editingQuery, setEditingQuery] = useState(null)
+  const [editQueryText, setEditQueryText] = useState('')
+  const [editingAnnotation, setEditingAnnotation] = useState(null)
+  const [editAnnotationData, setEditAnnotationData] = useState({
+    start_timestamp: '',
+    end_timestamp: '',
+    notes: ''
+  })
+
+  const handleFileChange = (e) => {
+    const file = e.target.files[0]
+    if (file) {
+      if (file.type !== 'application/json') {
+        setMessage('Error: Please upload a JSON file')
+        return
+      }
+
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        try {
+          const jsonData = JSON.parse(event.target.result)
+          setSelectedFile(file)
+          setJsonPreview(jsonData)
+          setMessage('')
+        } catch (error) {
+          setMessage('Error: Invalid JSON file')
+          setSelectedFile(null)
+          setJsonPreview(null)
+        }
+      }
+      reader.readAsText(file)
+    }
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     setLoading(true)
     setMessage('')
 
+    if (!jsonPreview) {
+      setMessage('Error: Please select a JSON file')
+      setLoading(false)
+      return
+    }
+
     try {
-      console.log('Submitting URL:', url, 'Title:', title)
+      console.log('Submitting JSON data:', jsonPreview)
       const response = await fetch('/api/submit_video', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ url, title }),
+        body: JSON.stringify(jsonPreview),
       })
 
       console.log('Response status:', response.status)
 
-      // Check if response has content
       const text = await response.text()
       console.log('Response text:', text)
       const data = text ? JSON.parse(text) : {}
 
       if (response.ok) {
-        setMessage(`Success! Video submitted.`)
-        setUrl('')
-        setTitle('')
+        setMessage(`Success! Video submitted with ${data.queries_created || 0} queries and ${data.annotations_created || 0} annotations.`)
+        setSelectedFile(null)
+        setJsonPreview(null)
+        // Reset file input
+        document.getElementById('json-file-input').value = ''
       } else {
         setMessage(`Error: ${data.message || 'Failed to submit video'}`)
       }
@@ -143,7 +183,41 @@ function App() {
     }
   }
 
+  const handleEditQuery = (query) => {
+    setEditingQuery(query.id)
+    setEditQueryText(query.query_text)
+  }
+
+  const handleSaveQuery = async (queryId) => {
+    try {
+      const response = await fetch(`/api/queries/${queryId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ query_text: editQueryText }),
+      })
+
+      if (response.ok && selectedVideo) {
+        setEditingQuery(null)
+        setEditQueryText('')
+        fetchQueries(selectedVideo.id)
+      }
+    } catch (error) {
+      console.error('Error updating query:', error)
+    }
+  }
+
+  const handleCancelEditQuery = () => {
+    setEditingQuery(null)
+    setEditQueryText('')
+  }
+
   const handleDeleteQuery = async (queryId) => {
+    if (!window.confirm('Are you sure you want to delete this query? This will also delete all associated annotations.')) {
+      return
+    }
+
     try {
       const response = await fetch(`/api/queries/${queryId}`, {
         method: 'DELETE',
@@ -215,7 +289,53 @@ function App() {
     }
   }
 
+  const handleEditAnnotation = (annotation) => {
+    setEditingAnnotation(annotation.id)
+    setEditAnnotationData({
+      start_timestamp: annotation.start_timestamp || '00:00:00',
+      end_timestamp: annotation.end_timestamp || '00:00:00',
+      notes: annotation.notes || ''
+    })
+  }
+
+  const handleSaveAnnotation = async (annotationId) => {
+    try {
+      const response = await fetch(`/api/annotations/${annotationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(editAnnotationData),
+      })
+
+      if (response.ok && selectedQuery) {
+        setEditingAnnotation(null)
+        setEditAnnotationData({
+          start_timestamp: '00:00:00',
+          end_timestamp: '00:00:00',
+          notes: ''
+        })
+        fetchAnnotations(selectedQuery.id)
+      }
+    } catch (error) {
+      console.error('Error updating annotation:', error)
+    }
+  }
+
+  const handleCancelEditAnnotation = () => {
+    setEditingAnnotation(null)
+    setEditAnnotationData({
+      start_timestamp: '00:00:00',
+      end_timestamp: '00:00:00',
+      notes: ''
+    })
+  }
+
   const handleDeleteAnnotation = async (annotationId) => {
+    if (!window.confirm('Are you sure you want to delete this annotation?')) {
+      return
+    }
+
     try {
       const response = await fetch(`/api/annotations/${annotationId}`, {
         method: 'DELETE',
@@ -273,31 +393,52 @@ function App() {
             <div className="submit-tab">
               <form onSubmit={handleSubmit} className="video-form">
                 <div className="form-group">
-                  <label htmlFor="title">Video Title:</label>
+                  <label htmlFor="json-file-input">Upload JSON File:</label>
                   <input
-                    type="text"
-                    id="title"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
-                    placeholder="Enter video title"
+                    type="file"
+                    id="json-file-input"
+                    accept=".json"
+                    onChange={handleFileChange}
                     required
                   />
+                  <small style={{ display: 'block', marginTop: '8px', color: '#666' }}>
+                    Upload a JSON file with video metadata, queries, and annotations
+                  </small>
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="url">Video URL:</label>
-                  <input
-                    type="text"
-                    id="url"
-                    value={url}
-                    onChange={(e) => setUrl(e.target.value)}
-                    placeholder="YouTube, Vimeo, or direct video URL"
-                    required
-                  />
-                </div>
+                {jsonPreview && (
+                  <div className="form-group">
+                    <label>JSON Preview:</label>
+                    <div style={{
+                      background: '#f5f5f5',
+                      padding: '12px',
+                      borderRadius: '4px',
+                      maxHeight: '300px',
+                      overflow: 'auto',
+                      fontSize: '13px'
+                    }}>
+                      <pre style={{ margin: 0 }}>{JSON.stringify(jsonPreview, null, 2)}</pre>
+                    </div>
+                    <div style={{ marginTop: '8px', color: '#666', fontSize: '14px' }}>
+                      <strong>Video:</strong> {jsonPreview.title || 'No title'}
+                      {jsonPreview.queries && (
+                        <>
+                          <br />
+                          <strong>Queries:</strong> {jsonPreview.queries.length}
+                          <br />
+                          <strong>Total Annotations:</strong> {
+                            jsonPreview.queries.reduce((sum, q) =>
+                              sum + (q.annotations ? q.annotations.length : 0), 0
+                            )
+                          }
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
 
-                <button type="submit" disabled={loading}>
-                  {loading ? 'Submitting...' : 'Submit Video'}
+                <button type="submit" disabled={loading || !jsonPreview}>
+                  {loading ? 'Submitting...' : 'Submit Video Data'}
                 </button>
               </form>
 
@@ -306,6 +447,36 @@ function App() {
                   {message}
                 </div>
               )}
+
+              <div style={{ marginTop: '30px', padding: '20px', background: '#f9f9f9', borderRadius: '8px' }}>
+                <h3 style={{ marginTop: 0 }}>Expected JSON Format:</h3>
+                <pre style={{
+                  background: '#fff',
+                  padding: '15px',
+                  borderRadius: '4px',
+                  overflow: 'auto',
+                  fontSize: '13px'
+                }}>
+{`{
+  "url": "https://youtube.com/watch?v=...",
+  "title": "Video Title",
+  "description": "Video description (optional)",
+  "topic": "Video topic/category (optional)",
+  "queries": [
+    {
+      "query_text": "Your query text here",
+      "annotations": [
+        {
+          "start_timestamp": "00:00:00",
+          "end_timestamp": "00:00:05",
+          "notes": "Description of what happens"
+        }
+      ]
+    }
+  ]
+}`}
+                </pre>
+              </div>
             </div>
           )}
 
@@ -410,26 +581,62 @@ function App() {
                 ) : (
                   queries.map((query) => (
                     <div key={query.id} className="query-item">
-                      <div className="query-content">
-                        <p>{query.query_text}</p>
-                        <span className="query-date">
-                          {new Date(query.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <div className="query-actions">
-                        <button
-                          className="annotations-btn"
-                          onClick={(e) => handleViewAnnotations(query, e)}
-                        >
-                          Annotations
-                        </button>
-                        <button
-                          className="delete-btn"
-                          onClick={() => handleDeleteQuery(query.id)}
-                        >
-                          Delete
-                        </button>
-                      </div>
+                      {editingQuery === query.id ? (
+                        <div className="query-edit-form">
+                          <textarea
+                            value={editQueryText}
+                            onChange={(e) => setEditQueryText(e.target.value)}
+                            rows="3"
+                            style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                          />
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="save-btn"
+                              onClick={() => handleSaveQuery(query.id)}
+                              style={{ background: '#4CAF50' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="cancel-btn"
+                              onClick={handleCancelEditQuery}
+                              style={{ background: '#757575' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="query-content">
+                            <p>{query.query_text}</p>
+                            <span className="query-date">
+                              {new Date(query.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div className="query-actions">
+                            <button
+                              className="annotations-btn"
+                              onClick={(e) => handleViewAnnotations(query, e)}
+                            >
+                              Annotations
+                            </button>
+                            <button
+                              className="edit-btn"
+                              onClick={() => handleEditQuery(query)}
+                              style={{ background: '#2196F3' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="delete-btn"
+                              onClick={() => handleDeleteQuery(query.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))
                 )}
@@ -500,25 +707,88 @@ function App() {
                 ) : (
                   annotations.map((annotation) => (
                     <div key={annotation.id} className="annotation-item">
-                      <div className="annotation-content">
-                        {(annotation.start_timestamp || annotation.end_timestamp) && (
-                          <p>
-                            <strong>Time Range:</strong> {annotation.start_timestamp || '00:00:00'} - {annotation.end_timestamp || '00:00:00'}
-                          </p>
-                        )}
-                        {annotation.notes && (
-                          <p><strong>Description:</strong> {annotation.notes}</p>
-                        )}
-                        <span className="annotation-date">
-                          {new Date(annotation.created_at).toLocaleString()}
-                        </span>
-                      </div>
-                      <button
-                        className="delete-btn"
-                        onClick={() => handleDeleteAnnotation(annotation.id)}
-                      >
-                        Delete
-                      </button>
+                      {editingAnnotation === annotation.id ? (
+                        <div className="annotation-edit-form" style={{ width: '100%' }}>
+                          <div className="form-group">
+                            <label>Start Timestamp (HH:MM:SS):</label>
+                            <input
+                              type="text"
+                              value={editAnnotationData.start_timestamp}
+                              onChange={(e) => setEditAnnotationData({...editAnnotationData, start_timestamp: e.target.value})}
+                              placeholder="00:00:00"
+                              pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>End Timestamp (HH:MM:SS):</label>
+                            <input
+                              type="text"
+                              value={editAnnotationData.end_timestamp}
+                              onChange={(e) => setEditAnnotationData({...editAnnotationData, end_timestamp: e.target.value})}
+                              placeholder="00:00:00"
+                              pattern="[0-9]{2}:[0-9]{2}:[0-9]{2}"
+                              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                            />
+                          </div>
+                          <div className="form-group">
+                            <label>Description:</label>
+                            <textarea
+                              value={editAnnotationData.notes}
+                              onChange={(e) => setEditAnnotationData({...editAnnotationData, notes: e.target.value})}
+                              rows="3"
+                              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                            />
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="save-btn"
+                              onClick={() => handleSaveAnnotation(annotation.id)}
+                              style={{ background: '#4CAF50' }}
+                            >
+                              Save
+                            </button>
+                            <button
+                              className="cancel-btn"
+                              onClick={handleCancelEditAnnotation}
+                              style={{ background: '#757575' }}
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="annotation-content">
+                            {(annotation.start_timestamp || annotation.end_timestamp) && (
+                              <p>
+                                <strong>Time Range:</strong> {annotation.start_timestamp || '00:00:00'} - {annotation.end_timestamp || '00:00:00'}
+                              </p>
+                            )}
+                            {annotation.notes && (
+                              <p><strong>Description:</strong> {annotation.notes}</p>
+                            )}
+                            <span className="annotation-date">
+                              {new Date(annotation.created_at).toLocaleString()}
+                            </span>
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="edit-btn"
+                              onClick={() => handleEditAnnotation(annotation)}
+                              style={{ background: '#2196F3' }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="delete-btn"
+                              onClick={() => handleDeleteAnnotation(annotation.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))
                 )}
