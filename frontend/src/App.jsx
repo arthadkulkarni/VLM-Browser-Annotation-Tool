@@ -368,6 +368,68 @@ function App() {
     }
   }
 
+  const handleExportJSON = async () => {
+    try {
+      // Fetch all videos
+      const videosResponse = await fetch('/api/videos')
+      const videosData = await videosResponse.json()
+
+      if (!videosData.videos || videosData.videos.length === 0) {
+        alert('No videos to export')
+        return
+      }
+
+      // Fetch queries and annotations for each video
+      const exportData = await Promise.all(
+        videosData.videos.map(async (video) => {
+          // Fetch queries for this video
+          const queriesResponse = await fetch(`/api/videos/${video.id}/queries`)
+          const queriesData = await queriesResponse.json()
+
+          // Fetch annotations for each query
+          const queriesWithAnnotations = await Promise.all(
+            (queriesData.queries || []).map(async (query) => {
+              const annotationsResponse = await fetch(`/api/queries/${query.id}/annotations`)
+              const annotationsData = await annotationsResponse.json()
+
+              return {
+                query_text: query.query_text,
+                annotations: (annotationsData.annotations || []).map(annotation => ({
+                  start_timestamp: annotation.start_timestamp,
+                  end_timestamp: annotation.end_timestamp,
+                  notes: annotation.notes
+                }))
+              }
+            })
+          )
+
+          return {
+            url: video.url,
+            title: video.title,
+            description: video.description || '',
+            topic: video.topic || '',
+            queries: queriesWithAnnotations
+          }
+        })
+      )
+
+      // Create and download JSON file
+      const jsonString = JSON.stringify(exportData, null, 2)
+      const blob = new Blob([jsonString], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = `video_annotations_export_${new Date().toISOString().split('T')[0]}.json`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      console.error('Error exporting JSON:', error)
+      alert('Failed to export JSON')
+    }
+  }
+
   return (
     <div className="app">
       <div className="container">
@@ -484,9 +546,14 @@ function App() {
             <div className="history-tab">
               <div className="videos-header">
                 <h2>Submitted Videos</h2>
-                <button onClick={fetchVideos} className="refresh-btn">
-                  Refresh
-                </button>
+                <div style={{ display: 'flex', gap: '10px' }}>
+                  <button onClick={handleExportJSON} className="export-btn" style={{ background: '#4CAF50' }}>
+                    Export JSON
+                  </button>
+                  <button onClick={fetchVideos} className="refresh-btn">
+                    Refresh
+                  </button>
+                </div>
               </div>
 
               {videos.length === 0 ? (
