@@ -141,7 +141,14 @@ function App() {
 
     try {
       console.log('Submitting JSON data:', jsonPreview)
-      const response = await fetch('/api/submit_video', {
+
+      // Detect if JSON is an array (multiple videos) or object (single video)
+      const isMultipleVideos = Array.isArray(jsonPreview)
+      const endpoint = isMultipleVideos ? '/api/submit_videos' : '/api/submit_video'
+
+      console.log(`Using endpoint: ${endpoint}`)
+
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -156,7 +163,11 @@ function App() {
       const data = text ? JSON.parse(text) : {}
 
       if (response.ok) {
-        setMessage(`Success! Video submitted with ${data.queries_created || 0} queries and ${data.annotations_created || 0} annotations.`)
+        if (isMultipleVideos) {
+          setMessage(`Success! Imported ${data.videos_imported || 0} video(s) with ${data.total_queries_created || 0} queries and ${data.total_annotations_created || 0} annotations.`)
+        } else {
+          setMessage(`Success! Video submitted with ${data.queries_created || 0} queries and ${data.annotations_created || 0} annotations.`)
+        }
         setSelectedFile(null)
         setJsonPreview(null)
         // Reset file input

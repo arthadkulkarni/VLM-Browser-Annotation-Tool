@@ -29,7 +29,8 @@ def home():
         'message': 'Dataset Generation and Refinement Pipeline API',
         'version': '1.0',
         'endpoints': {
-            'POST /api/submit_video': 'Submit a new video URL',
+            'POST /api/submit_video': 'Submit a single video',
+            'POST /api/submit_videos': 'Submit multiple videos (array)',
             'GET /api/videos': 'Get all videos',
             'GET /api/videos/<id>': 'Get a specific video by ID',
             'GET /api/health': 'Health check'
@@ -167,6 +168,177 @@ def submit_video_url():
             'video': video.to_dict(),
             'queries_created': len(created_queries),
             'annotations_created': len(created_annotations)
+        }), 201
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Server error',
+            'message': str(e)
+        }), 500
+
+
+@app.route('/api/submit_videos', methods=['POST'])
+def submit_multiple_videos():
+    """
+    Endpoint to receive multiple videos from JSON file.
+    Expects JSON body as an array of video objects.
+
+    Expected format:
+    [
+        {
+            "url": "video_url",
+            "title": "video_title",
+            "description": "video_description" (optional),
+            "topic": "video_topic" (optional),
+            "duration": duration_in_seconds,
+            "queries": [  (optional)
+                {
+                    "query_text": "query text",
+                    "annotations": [  (optional)
+                        {
+                            "start_timestamp": "00:00:00",
+                            "end_timestamp": "00:00:05",
+                            "notes": "description"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+    """
+    try:
+        data = request.get_json()
+
+        # Check if data is a list
+        if not isinstance(data, list):
+            return jsonify({
+                'error': 'Invalid format',
+                'message': 'Expected an array of video objects'
+            }), 400
+
+        if len(data) == 0:
+            return jsonify({
+                'error': 'Empty array',
+                'message': 'Please provide at least one video'
+            }), 400
+
+        results = []
+        total_queries = 0
+        total_annotations = 0
+
+        for idx, video_data in enumerate(data):
+            # Validate required fields for each video
+            if not video_data or 'url' not in video_data:
+                return jsonify({
+                    'error': f'Missing video URL at index {idx}',
+                    'message': f'Please provide a "url" field for video at index {idx}'
+                }), 400
+
+            if not video_data or 'title' not in video_data:
+                return jsonify({
+                    'error': f'Missing video title at index {idx}',
+                    'message': f'Please provide a "title" field for video at index {idx}'
+                }), 400
+
+            if not video_data or 'duration' not in video_data:
+                return jsonify({
+                    'error': f'Missing video duration at index {idx}',
+                    'message': f'Please provide a "duration" field (in seconds) for video at index {idx}'
+                }), 400
+
+            video_url = video_data['url']
+            video_title = video_data['title']
+            video_duration = video_data['duration']
+            video_description = video_data.get('description', '')
+            video_topic = video_data.get('topic', '')
+
+            # Validate URL is not empty
+            if not video_url.strip():
+                return jsonify({
+                    'error': f'Empty URL at index {idx}',
+                    'message': f'Video URL cannot be empty for video at index {idx}'
+                }), 400
+
+            # Validate title is not empty
+            if not video_title.strip():
+                return jsonify({
+                    'error': f'Empty title at index {idx}',
+                    'message': f'Video title cannot be empty for video at index {idx}'
+                }), 400
+
+            # Validate duration is a positive number
+            try:
+                video_duration = int(video_duration)
+                if video_duration <= 0:
+                    return jsonify({
+                        'error': f'Invalid duration at index {idx}',
+                        'message': f'Video duration must be a positive number (in seconds) for video at index {idx}'
+                    }), 400
+            except (ValueError, TypeError):
+                return jsonify({
+                    'error': f'Invalid duration format at index {idx}',
+                    'message': f'Video duration must be a number (in seconds) for video at index {idx}'
+                }), 400
+
+            # Create video record
+            video = Video(
+                url=video_url,
+                title=video_title,
+                description=video_description,
+                topic=video_topic,
+                duration=video_duration
+            )
+            db.session.add(video)
+            db.session.flush()  # Get video ID before committing
+
+            # Process queries if provided
+            queries_data = video_data.get('queries', [])
+            created_queries = []
+            created_annotations = []
+
+            for query_item in queries_data:
+                if 'query_text' in query_item and query_item['query_text'].strip():
+                    # Create query
+                    query = Query(
+                        video_id=video.id,
+                        query_text=query_item['query_text']
+                    )
+                    db.session.add(query)
+                    db.session.flush()  # Get query ID before processing annotations
+                    created_queries.append(query.to_dict())
+
+                    # Process annotations if provided
+                    annotations_data = query_item.get('annotations', [])
+                    for annotation_item in annotations_data:
+                        if 'notes' in annotation_item:
+                            annotation = Annotation(
+                                query_id=query.id,
+                                start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
+                                end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
+                                notes=annotation_item['notes']
+                            )
+                            db.session.add(annotation)
+                            created_annotations.append(annotation_item)
+
+            total_queries += len(created_queries)
+            total_annotations += len(created_annotations)
+
+            results.append({
+                'video': video.to_dict(),
+                'queries_created': len(created_queries),
+                'annotations_created': len(created_annotations)
+            })
+
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Successfully imported {len(results)} video(s)',
+            'videos_imported': len(results),
+            'total_queries_created': total_queries,
+            'total_annotations_created': total_annotations,
+            'results': results
         }), 201
 
     except Exception as e:

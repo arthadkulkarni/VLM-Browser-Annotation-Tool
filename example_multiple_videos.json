@@ -1,0 +1,149 @@
+[
+  {
+    "url": "https://www.youtube.com/watch?v=x7X9w_GIm1s",
+    "title": "Advanced JavaScript: Async/Await Tutorial",
+    "description": "Learn how to use async/await in JavaScript for handling asynchronous operations. Covers promises, error handling, and real-world examples.",
+    "topic": "Web Development",
+    "duration": 2200,
+    "queries": [
+      {
+        "query_text": "What are Promises in JavaScript?",
+        "annotations": [
+          {
+            "start_timestamp": "00:02:15",
+            "end_timestamp": "00:06:45",
+            "notes": "Introduces the concept of Promises and their three states: pending, fulfilled, and rejected. Shows basic Promise creation with resolve and reject."
+          },
+          {
+            "start_timestamp": "00:06:45",
+            "end_timestamp": "00:09:30",
+            "notes": "Demonstrates using .then() and .catch() methods to handle promise resolution and errors. Shows chaining multiple promises together."
+          }
+        ]
+      },
+      {
+        "query_text": "How does async/await work?",
+        "annotations": [
+          {
+            "start_timestamp": "00:12:00",
+            "end_timestamp": "00:16:20",
+            "notes": "Explains the async keyword and how it makes a function return a Promise. Shows how await pauses execution until the Promise resolves."
+          },
+          {
+            "start_timestamp": "00:16:20",
+            "end_timestamp": "00:19:45",
+            "notes": "Demonstrates error handling with try/catch blocks in async functions. Shows best practices for handling multiple async operations."
+          }
+        ]
+      },
+      {
+        "query_text": "What are common async/await patterns?",
+        "annotations": [
+          {
+            "start_timestamp": "00:23:10",
+            "end_timestamp": "00:28:50",
+            "notes": "Shows parallel execution using Promise.all() vs sequential await calls. Discusses performance implications of each approach."
+          },
+          {
+            "start_timestamp": "00:28:50",
+            "end_timestamp": "00:35:34",
+            "notes": "Demonstrates real-world examples: fetching data from APIs, file operations, and database queries using async/await patterns."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=K4DyBUG242c",
+    "title": "React Hooks Explained: useState and useEffect",
+    "description": "Complete guide to React Hooks focusing on useState and useEffect. Learn how to manage state and side effects in functional components.",
+    "topic": "React Development",
+    "duration": 1450,
+    "queries": [
+      {
+        "query_text": "How does useState hook work?",
+        "annotations": [
+          {
+            "start_timestamp": "00:03:00",
+            "end_timestamp": "00:07:30",
+            "notes": "Introduces useState hook and its syntax. Shows how to declare state variables and update them. Compares with class component state."
+          },
+          {
+            "start_timestamp": "00:07:30",
+            "end_timestamp": "00:11:15",
+            "notes": "Demonstrates multiple state variables, object state, and array state. Shows functional updates for state that depends on previous state."
+          }
+        ]
+      },
+      {
+        "query_text": "What is useEffect and when to use it?",
+        "annotations": [
+          {
+            "start_timestamp": "00:14:20",
+            "end_timestamp": "00:18:45",
+            "notes": "Explains useEffect for side effects. Shows the dependency array and how it controls when effects run. Covers cleanup functions."
+          },
+          {
+            "start_timestamp": "00:18:45",
+            "end_timestamp": "00:23:10",
+            "notes": "Demonstrates common use cases: data fetching, subscriptions, DOM manipulation. Shows best practices for avoiding infinite loops."
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "url": "https://www.youtube.com/watch?v=SqcY0GlETPk",
+    "title": "Database Design Fundamentals",
+    "description": "Learn the fundamentals of relational database design including normalization, relationships, and indexing strategies.",
+    "topic": "Database Design",
+    "duration": 2950,
+    "queries": [
+      {
+        "query_text": "What is database normalization?",
+        "annotations": [
+          {
+            "start_timestamp": "00:08:00",
+            "end_timestamp": "00:14:30",
+            "notes": "Introduces the concept of normalization and why it's important. Explains first normal form (1NF) with examples of atomic values and eliminating repeating groups."
+          },
+          {
+            "start_timestamp": "00:14:30",
+            "end_timestamp": "00:21:15",
+            "notes": "Covers second normal form (2NF) and partial dependencies. Shows how to identify and remove partial dependencies with practical examples."
+          },
+          {
+            "start_timestamp": "00:21:15",
+            "end_timestamp": "00:28:00",
+            "notes": "Explains third normal form (3NF) and transitive dependencies. Demonstrates the process of decomposing tables to achieve 3NF."
+          }
+        ]
+      },
+      {
+        "query_text": "How do you design table relationships?",
+        "annotations": [
+          {
+            "start_timestamp": "00:32:00",
+            "end_timestamp": "00:37:45",
+            "notes": "Introduces one-to-many relationships with foreign keys. Shows examples using customers and orders tables."
+          },
+          {
+            "start_timestamp": "00:37:45",
+            "end_timestamp": "00:42:20",
+            "notes": "Explains many-to-many relationships and junction tables. Demonstrates with students and courses example."
+          }
+        ]
+      },
+      {
+        "query_text": "What are database indexes and when to use them?",
+        "annotations": [
+          {
+            "start_timestamp": "00:45:30",
+            "end_timestamp": "00:48:10",
+            "notes": "Explains what indexes are and how they speed up queries. Discusses B-tree indexes and their structure. Shows query performance comparison with and without indexes."
+          }
+        ]
+      }
+    ]
+  }
+]
