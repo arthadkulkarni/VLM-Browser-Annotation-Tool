@@ -79,8 +79,15 @@ def submit_video_url():
                 'message': 'Please provide a "title" field in the request body'
             }), 400
 
+        if not data or 'duration' not in data:
+            return jsonify({
+                'error': 'Missing video duration',
+                'message': 'Please provide a "duration" field (in seconds) in the request body'
+            }), 400
+
         video_url = data['url']
         video_title = data['title']
+        video_duration = data['duration']
         video_description = data.get('description', '')
         video_topic = data.get('topic', '')
 
@@ -98,13 +105,27 @@ def submit_video_url():
                 'message': 'Video title cannot be empty'
             }), 400
 
+        # Validate duration is a positive number
+        try:
+            video_duration = int(video_duration)
+            if video_duration <= 0:
+                return jsonify({
+                    'error': 'Invalid duration',
+                    'message': 'Video duration must be a positive number (in seconds)'
+                }), 400
+        except (ValueError, TypeError):
+            return jsonify({
+                'error': 'Invalid duration format',
+                'message': 'Video duration must be a number (in seconds)'
+            }), 400
+
         # Create video record
         video = Video(
             url=video_url,
             title=video_title,
             description=video_description,
             topic=video_topic,
-            status='pending'
+            duration=video_duration
         )
         db.session.add(video)
         db.session.flush()  # Get video ID before committing
@@ -177,7 +198,7 @@ def get_all_videos():
 def get_video(video_id):
     """Get a specific video by ID"""
     try:
-        video = Video.query.get(video_id)
+        video = db.session.get(Video, video_id)
         if not video:
             return jsonify({
                 'error': 'Not found',
@@ -199,7 +220,7 @@ def get_video(video_id):
 def delete_video(video_id):
     """Delete a specific video"""
     try:
-        video = Video.query.get(video_id)
+        video = db.session.get(Video, video_id)
         if not video:
             return jsonify({
                 'error': 'Not found',
@@ -236,7 +257,7 @@ def create_query(video_id):
     """Create a new query for a specific video"""
     try:
         # Check if video exists
-        video = Video.query.get(video_id)
+        video = db.session.get(Video, video_id)
         if not video:
             return jsonify({
                 'error': 'Not found',
@@ -283,7 +304,7 @@ def get_queries(video_id):
     """Get all queries for a specific video"""
     try:
         # Check if video exists
-        video = Video.query.get(video_id)
+        video = db.session.get(Video, video_id)
         if not video:
             return jsonify({
                 'error': 'Not found',
@@ -310,7 +331,7 @@ def get_queries(video_id):
 def update_query(query_id):
     """Update a specific query"""
     try:
-        query = Query.query.get(query_id)
+        query = db.session.get(Query, query_id)
         if not query:
             return jsonify({
                 'error': 'Not found',
@@ -347,7 +368,7 @@ def update_query(query_id):
 def delete_query(query_id):
     """Delete a specific query"""
     try:
-        query = Query.query.get(query_id)
+        query = db.session.get(Query, query_id)
         if not query:
             return jsonify({
                 'error': 'Not found',
@@ -370,13 +391,58 @@ def delete_query(query_id):
         }), 500
 
 
+@app.route('/api/queries/<int:query_id>/status', methods=['PUT'])
+def update_query_status(query_id):
+    """Update the status of a specific query (pending or finished)"""
+    try:
+        query = db.session.get(Query, query_id)
+        if not query:
+            return jsonify({
+                'error': 'Not found',
+                'message': f'Query with ID {query_id} not found'
+            }), 404
+
+        data = request.get_json()
+
+        if 'status' not in data:
+            return jsonify({
+                'error': 'Missing status',
+                'message': 'Please provide a "status" field in the request body'
+            }), 400
+
+        status = data['status']
+
+        # Validate status value
+        if status not in ['pending', 'finished']:
+            return jsonify({
+                'error': 'Invalid status',
+                'message': 'Status must be either "pending" or "finished"'
+            }), 400
+
+        query.status = status
+        db.session.commit()
+
+        return jsonify({
+            'status': 'success',
+            'message': f'Query status updated to {status}',
+            'query': query.to_dict()
+        }), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({
+            'error': 'Server error',
+            'message': str(e)
+        }), 500
+
+
 # Annotation endpoints
 @app.route('/api/queries/<int:query_id>/annotations', methods=['POST'])
 def create_annotation(query_id):
     """Create a new annotation for a specific query"""
     try:
         # Check if query exists
-        query = Query.query.get(query_id)
+        query = db.session.get(Query, query_id)
         if not query:
             return jsonify({
                 'error': 'Not found',
@@ -453,7 +519,7 @@ def get_annotations(query_id):
 def get_annotation(annotation_id):
     """Get a specific annotation by ID"""
     try:
-        annotation = Annotation.query.get(annotation_id)
+        annotation = db.session.get(Annotation, annotation_id)
         if not annotation:
             return jsonify({
                 'error': 'Not found',
@@ -476,7 +542,7 @@ def get_annotation(annotation_id):
 def update_annotation(annotation_id):
     """Update an existing annotation"""
     try:
-        annotation = Annotation.query.get(annotation_id)
+        annotation = db.session.get(Annotation, annotation_id)
         if not annotation:
             return jsonify({
                 'error': 'Not found',
@@ -513,7 +579,7 @@ def update_annotation(annotation_id):
 def delete_annotation(annotation_id):
     """Delete a specific annotation"""
     try:
-        annotation = Annotation.query.get(annotation_id)
+        annotation = db.session.get(Annotation, annotation_id)
         if not annotation:
             return jsonify({
                 'error': 'Not found',

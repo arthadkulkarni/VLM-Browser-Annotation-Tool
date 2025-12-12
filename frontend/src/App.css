@@ -168,10 +168,12 @@ button:disabled {
   background-color: #2196F3;
   font-size: 0.9rem;
   padding: 0.5rem 1rem;
+  transition: all 0.2s;
 }
 
 .refresh-btn:hover {
-  background-color: #0b7dda;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
 }
 
 .no-videos {
@@ -294,9 +296,8 @@ button:disabled {
 }
 
 .queries-btn:hover {
-  background-color: #0b7dda;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
 }
 
 .video-actions .delete-btn {
@@ -308,9 +309,8 @@ button:disabled {
 }
 
 .video-actions .delete-btn:hover {
-  background-color: #d32f2f;
-  transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
 }
 
 /* Queries Tab Styles */
@@ -327,10 +327,12 @@ button:disabled {
   margin-bottom: 1rem;
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
+  transition: all 0.2s;
 }
 
 .back-btn:hover {
-  background-color: #555;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(102, 102, 102, 0.3);
 }
 
 .query-form {
@@ -402,10 +404,12 @@ button:disabled {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
   flex-shrink: 0;
+  transition: all 0.2s;
 }
 
 .delete-btn:hover {
-  background-color: #d32f2f;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
 }
 
 .query-actions {
@@ -419,10 +423,12 @@ button:disabled {
   padding: 0.5rem 1rem;
   font-size: 0.9rem;
   flex-shrink: 0;
+  transition: all 0.2s;
 }
 
 .annotations-btn:hover {
-  background-color: #F57C00;
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.3);
 }
 
 /* Annotations Tab Styles */
@@ -487,6 +493,13 @@ button:disabled {
   border: 1px solid #ddd;
   border-radius: 4px;
   gap: 1rem;
+  transition: all 0.2s;
+}
+
+.annotation-item:hover:not(:has(.annotation-edit-form)) {
+  background: #f0f0f0;
+  border-color: #FF9800;
+  box-shadow: 0 2px 8px rgba(255, 152, 0, 0.2);
 }
 
 .annotation-content {
@@ -517,4 +530,66 @@ button:disabled {
   color: #999;
   font-size: 0.85rem;
   margin-top: 0.5rem;
+}
+
+/* Edit, Save, Cancel button styles */
+.edit-btn {
+  background-color: #2196F3;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.edit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(33, 150, 243, 0.3);
+}
+
+.save-btn {
+  background-color: #4CAF50;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.save-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+.cancel-btn {
+  background-color: #757575;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+
+.cancel-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(117, 117, 117, 0.3);
+}
+
+.export-btn {
+  background-color: #4CAF50;
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  transition: all 0.2s;
+}
+
+.export-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(76, 175, 80, 0.3);
+}
+
+/* Enhanced delete button hover */
+.delete-btn {
+  transition: all 0.2s;
+}
+
+.delete-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 2px 8px rgba(244, 67, 54, 0.3);
 }

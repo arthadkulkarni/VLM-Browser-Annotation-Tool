@@ -1,5 +1,16 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import './App.css'
+
+// Helper function to convert timestamp (HH:MM:SS) to seconds
+const timestampToSeconds = (timestamp) => {
+  if (!timestamp) return 0
+  const parts = timestamp.split(':')
+  if (parts.length !== 3) return 0
+  const hours = parseInt(parts[0], 10) || 0
+  const minutes = parseInt(parts[1], 10) || 0
+  const seconds = parseInt(parts[2], 10) || 0
+  return hours * 3600 + minutes * 60 + seconds
+}
 
 // Helper function to determine video type and get embed URL
 const getVideoEmbedInfo = (url) => {
@@ -58,6 +69,39 @@ function App() {
     end_timestamp: '',
     notes: ''
   })
+  const [hoveredAnnotation, setHoveredAnnotation] = useState(null)
+
+  // Ref for the video player
+  const videoPlayerRef = useRef(null)
+  const iframePlayerRef = useRef(null)
+
+  // Auto-play video when entering annotations tab
+  useEffect(() => {
+    if (activeTab === 'annotations' && selectedVideo) {
+      const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+
+      // Small delay to ensure video player is mounted
+      const timer = setTimeout(() => {
+        if (embedInfo.type === 'direct' && videoPlayerRef.current) {
+          // For direct video files, auto-play
+          videoPlayerRef.current.play().catch(err => {
+            // Ignore autoplay errors (browser may block autoplay)
+            console.log('Autoplay prevented:', err)
+          })
+        } else if (embedInfo.type === 'youtube' && iframePlayerRef.current) {
+          // For YouTube, update src with autoplay parameter
+          const videoId = selectedVideo.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/)[1]
+          iframePlayerRef.current.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`
+        } else if (embedInfo.type === 'vimeo' && iframePlayerRef.current) {
+          // For Vimeo, update src with autoplay parameter
+          const vimeoId = selectedVideo.url.match(/(?:vimeo\.com\/)(\d+)/)[1]
+          iframePlayerRef.current.src = `https://player.vimeo.com/video/${vimeoId}?autoplay=1`
+        }
+      }, 100)
+
+      return () => clearTimeout(timer)
+    }
+  }, [activeTab, selectedVideo])
 
   const handleFileChange = (e) => {
     const file = e.target.files[0]
@@ -300,6 +344,8 @@ function App() {
 
   const handleSaveAnnotation = async (annotationId) => {
     try {
+      console.log('Saving annotation:', annotationId, editAnnotationData)
+
       const response = await fetch(`/api/annotations/${annotationId}`, {
         method: 'PUT',
         headers: {
@@ -307,6 +353,11 @@ function App() {
         },
         body: JSON.stringify(editAnnotationData),
       })
+
+      console.log('Response status:', response.status)
+
+      const responseData = await response.json()
+      console.log('Response data:', responseData)
 
       if (response.ok && selectedQuery) {
         setEditingAnnotation(null)
@@ -316,9 +367,12 @@ function App() {
           notes: ''
         })
         fetchAnnotations(selectedQuery.id)
+      } else {
+        alert(`Failed to save annotation: ${responseData.message || 'Unknown error'}`)
       }
     } catch (error) {
       console.error('Error updating annotation:', error)
+      alert(`Error saving annotation: ${error.message}`)
     }
   }
 
@@ -346,6 +400,67 @@ function App() {
       }
     } catch (error) {
       console.error('Error deleting annotation:', error)
+    }
+  }
+
+  const handleMarkQueryFinished = async () => {
+    if (!selectedQuery) return
+
+    try {
+      const response = await fetch(`/api/queries/${selectedQuery.id}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: 'finished' }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update the selectedQuery with the new status
+        setSelectedQuery(data.query)
+        // Also refresh queries list if we're on that tab
+        fetchQueries(selectedVideo.id)
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to mark query as finished: ${errorData.message || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error marking query as finished:', error)
+      alert(`Error: ${error.message}`)
+    }
+  }
+
+  const handleAnnotationClick = (annotation) => {
+    // Don't jump if we're editing this annotation
+    if (editingAnnotation === annotation.id) {
+      return
+    }
+
+    const startTimeInSeconds = timestampToSeconds(annotation.start_timestamp)
+
+    if (!selectedVideo) return
+
+    const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+
+    if (embedInfo.type === 'direct') {
+      // For direct video files, use the video element's currentTime
+      if (videoPlayerRef.current) {
+        videoPlayerRef.current.currentTime = startTimeInSeconds
+        videoPlayerRef.current.play()
+      }
+    } else if (embedInfo.type === 'youtube') {
+      // For YouTube videos, update the iframe src with the time parameter
+      if (iframePlayerRef.current) {
+        const videoId = selectedVideo.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/)[1]
+        iframePlayerRef.current.src = `https://www.youtube.com/embed/${videoId}?start=${startTimeInSeconds}&autoplay=1`
+      }
+    } else if (embedInfo.type === 'vimeo') {
+      // For Vimeo videos, update the iframe src with the time parameter
+      if (iframePlayerRef.current) {
+        const vimeoId = selectedVideo.url.match(/(?:vimeo\.com\/)(\d+)/)[1]
+        iframePlayerRef.current.src = `https://player.vimeo.com/video/${vimeoId}#t=${startTimeInSeconds}s&autoplay=1`
+      }
     }
   }
 
@@ -394,6 +509,7 @@ function App() {
 
               return {
                 query_text: query.query_text,
+                status: query.status,
                 annotations: (annotationsData.annotations || []).map(annotation => ({
                   start_timestamp: annotation.start_timestamp,
                   end_timestamp: annotation.end_timestamp,
@@ -408,6 +524,7 @@ function App() {
             title: video.title,
             description: video.description || '',
             topic: video.topic || '',
+            duration: video.duration,
             queries: queriesWithAnnotations
           }
         })
@@ -522,6 +639,7 @@ function App() {
 {`{
   "url": "https://youtube.com/watch?v=...",
   "title": "Video Title",
+  "duration": 180,
   "description": "Video description (optional)",
   "topic": "Video topic/category (optional)",
   "queries": [
@@ -538,6 +656,15 @@ function App() {
   ]
 }`}
                 </pre>
+                <div style={{ marginTop: '10px', fontSize: '13px', color: '#666' }}>
+                  <strong>Required fields:</strong>
+                  <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
+                    <li><code>url</code>: Video URL (YouTube, Vimeo, or direct video file)</li>
+                    <li><code>title</code>: Video title</li>
+                    <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
+                  </ul>
+                  <strong>Optional fields:</strong> description, topic, queries, annotations
+                </div>
               </div>
             </div>
           )}
@@ -676,7 +803,21 @@ function App() {
                       ) : (
                         <>
                           <div className="query-content">
-                            <p>{query.query_text}</p>
+                            <p>
+                              {query.query_text}
+                              <span style={{
+                                marginLeft: '10px',
+                                padding: '3px 10px',
+                                borderRadius: '10px',
+                                fontSize: '0.7rem',
+                                fontWeight: '600',
+                                textTransform: 'uppercase',
+                                background: query.status === 'finished' ? '#4CAF50' : '#FF9800',
+                                color: 'white'
+                              }}>
+                                {query.status || 'pending'}
+                              </span>
+                            </p>
                             <span className="query-date">
                               {new Date(query.created_at).toLocaleString()}
                             </span>
@@ -720,8 +861,176 @@ function App() {
                 >
                   ← Back to Queries
                 </button>
-                <h2>Annotations for: {selectedQuery.query_text}</h2>
+                <h2>
+                  Annotations for: {selectedQuery.query_text}
+                  <span style={{
+                    marginLeft: '12px',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    background: selectedQuery.status === 'finished' ? '#4CAF50' : '#FF9800',
+                    color: 'white'
+                  }}>
+                    {selectedQuery.status || 'pending'}
+                  </span>
+                </h2>
               </div>
+
+              {selectedVideo && (
+                <div className="video-player-container" style={{
+                  marginBottom: '2rem',
+                  padding: '1rem',
+                  background: '#000',
+                  borderRadius: '8px'
+                }}>
+                  {(() => {
+                    const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+
+                    if (embedInfo.type === 'direct') {
+                      // Direct video file (MP4, WebM, etc.)
+                      return (
+                        <div style={{ position: 'relative' }}>
+                          <video
+                            ref={videoPlayerRef}
+                            src={selectedVideo.url}
+                            controls
+                            style={{
+                              width: '100%',
+                              maxHeight: '500px',
+                              borderRadius: '4px'
+                            }}
+                          >
+                            Your browser does not support the video tag.
+                          </video>
+
+                          {/* Annotation markers overlay */}
+                          <div style={{
+                            position: 'absolute',
+                            bottom: '48px',
+                            left: '0',
+                            right: '0',
+                            height: '6px',
+                            pointerEvents: 'none',
+                            paddingLeft: '12px',
+                            paddingRight: '12px'
+                          }}>
+                            {annotations.map((annotation, index) => {
+                              const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                              const endSeconds = timestampToSeconds(annotation.end_timestamp)
+                              const videoDuration = videoPlayerRef.current?.duration || 0
+
+                              if (!videoDuration) return null
+
+                              const startPercent = (startSeconds / videoDuration) * 100
+                              const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                              return (
+                                <div
+                                  key={index}
+                                  style={{
+                                    position: 'absolute',
+                                    left: `${startPercent}%`,
+                                    width: `${widthPercent}%`,
+                                    height: '100%',
+                                    background: 'rgba(255, 152, 0, 0.7)',
+                                    borderRadius: '2px',
+                                    boxShadow: '0 0 4px rgba(255, 152, 0, 0.8)'
+                                  }}
+                                  title={annotation.notes}
+                                />
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )
+                    } else {
+                      // YouTube or Vimeo - use iframe
+                      return (
+                        <div>
+                          <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden' }}>
+                            <iframe
+                              ref={iframePlayerRef}
+                              src={embedInfo.embedUrl}
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                width: '100%',
+                                height: '100%',
+                                border: 'none',
+                                borderRadius: '4px'
+                              }}
+                              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                              allowFullScreen
+                            />
+                          </div>
+
+                          {/* Annotation timeline for YouTube/Vimeo (below video) */}
+                          <div style={{
+                            marginTop: '12px',
+                            padding: '8px',
+                            background: '#1a1a1a',
+                            borderRadius: '4px'
+                          }}>
+                            <div style={{
+                              fontSize: '0.85rem',
+                              color: '#999',
+                              marginBottom: '6px',
+                              fontWeight: '500'
+                            }}>
+                              Annotation Timeline: {selectedVideo.duration ? `(Video Duration: ${Math.floor(selectedVideo.duration / 60)}:${String(selectedVideo.duration % 60).padStart(2, '0')})` : ''}
+                            </div>
+                            <div style={{
+                              position: 'relative',
+                              height: '8px',
+                              background: '#333',
+                              borderRadius: '4px',
+                              overflow: 'hidden'
+                            }}>
+                              {annotations.map((annotation, index) => {
+                                const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                                const endSeconds = timestampToSeconds(annotation.end_timestamp)
+
+                                // Use video duration if available, otherwise estimate from annotations
+                                let videoDuration = selectedVideo.duration || 0
+                                if (!videoDuration && annotations.length > 0) {
+                                  const maxTimestamp = Math.max(...annotations.map(a =>
+                                    timestampToSeconds(a.end_timestamp)
+                                  ))
+                                  videoDuration = maxTimestamp * 1.2 // Add 20% buffer as fallback
+                                }
+
+                                if (!videoDuration) return null
+
+                                const startPercent = (startSeconds / videoDuration) * 100
+                                const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                                return (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${startPercent}%`,
+                                      width: `${widthPercent}%`,
+                                      height: '100%',
+                                      background: 'rgba(255, 152, 0, 0.9)',
+                                      cursor: 'pointer'
+                                    }}
+                                    title={`${annotation.start_timestamp} - ${annotation.end_timestamp}: ${annotation.notes}`}
+                                    onClick={() => handleAnnotationClick(annotation)}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                  })()}
+                </div>
+              )}
 
               <form onSubmit={handleAddAnnotation} className="annotation-form">
                 <h3>Add New Annotation</h3>
@@ -773,9 +1082,20 @@ function App() {
                   <p className="no-annotations">No annotations yet. Add one above!</p>
                 ) : (
                   annotations.map((annotation) => (
-                    <div key={annotation.id} className="annotation-item">
+                    <div
+                      key={annotation.id}
+                      className="annotation-item"
+                      onClick={() => handleAnnotationClick(annotation)}
+                      style={{
+                        cursor: editingAnnotation === annotation.id ? 'default' : 'pointer'
+                      }}
+                    >
                       {editingAnnotation === annotation.id ? (
-                        <div className="annotation-edit-form" style={{ width: '100%' }}>
+                        <div
+                          className="annotation-edit-form"
+                          style={{ width: '100%' }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
                           <div className="form-group">
                             <label>Start Timestamp (HH:MM:SS):</label>
                             <input
@@ -839,7 +1159,10 @@ function App() {
                               {new Date(annotation.created_at).toLocaleString()}
                             </span>
                           </div>
-                          <div style={{ display: 'flex', gap: '8px' }}>
+                          <div
+                            style={{ display: 'flex', gap: '8px' }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
                             <button
                               className="edit-btn"
                               onClick={() => handleEditAnnotation(annotation)}
@@ -858,6 +1181,74 @@ function App() {
                       )}
                     </div>
                   ))
+                )}
+              </div>
+
+              {/* Query Confirmation Section */}
+              <div style={{
+                marginTop: '2rem',
+                padding: '1.5rem',
+                background: selectedQuery.status === 'finished' ? '#E8F5E9' : '#FFF3E0',
+                borderRadius: '8px',
+                border: `2px solid ${selectedQuery.status === 'finished' ? '#4CAF50' : '#FF9800'}`
+              }}>
+                <h3 style={{
+                  marginTop: 0,
+                  marginBottom: '1rem',
+                  color: selectedQuery.status === 'finished' ? '#2E7D32' : '#E65100'
+                }}>
+                  {selectedQuery.status === 'finished' ? 'Query Completed' : 'Confirm Annotations'}
+                </h3>
+
+                {selectedQuery.status === 'finished' ? (
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    color: '#2E7D32'
+                  }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                    </svg>
+                    <span style={{ fontSize: '1rem', fontWeight: '500' }}>
+                      This query has been marked as finished. All annotations are confirmed.
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <p style={{
+                      marginTop: 0,
+                      marginBottom: '1rem',
+                      color: '#5D4037'
+                    }}>
+                      Review all annotations above. Once you've confirmed they are correct, click the button below to mark this query as finished.
+                    </p>
+                    <button
+                      onClick={handleMarkQueryFinished}
+                      style={{
+                        background: '#4CAF50',
+                        color: 'white',
+                        border: 'none',
+                        padding: '12px 24px',
+                        borderRadius: '6px',
+                        fontSize: '1rem',
+                        fontWeight: '600',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.target.style.background = '#45a049'
+                        e.target.style.transform = 'translateY(-2px)'
+                      }}
+                      onMouseLeave={(e) => {
+                        e.target.style.background = '#4CAF50'
+                        e.target.style.transform = 'translateY(0)'
+                      }}
+                    >
+                      ✓ Confirm & Mark Query as Finished
+                    </button>
+                  </>
                 )}
               </div>
             </div>

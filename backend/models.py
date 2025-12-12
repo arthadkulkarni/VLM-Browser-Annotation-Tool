@@ -7,7 +7,6 @@ class Video(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     url = db.Column(db.String(2048), nullable=False)
-    status = db.Column(db.String(50), default='pending')  # pending, processing, completed, failed
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -26,7 +25,6 @@ class Video(db.Model):
         return {
             'id': self.id,
             'url': self.url,
-            'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None,
             'title': self.title,
@@ -47,6 +45,7 @@ class Query(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     video_id = db.Column(db.Integer, db.ForeignKey('videos.id'), nullable=False)
     query_text = db.Column(db.Text, nullable=False)
+    status = db.Column(db.String(50), default='pending')  # pending or finished
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -59,6 +58,7 @@ class Query(db.Model):
             'id': self.id,
             'video_id': self.video_id,
             'query_text': self.query_text,
+            'status': self.status,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
