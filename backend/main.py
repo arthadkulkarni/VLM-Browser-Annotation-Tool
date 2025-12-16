@@ -5,6 +5,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from database import db, init_db
 from models import Video, Query, Annotation
+import yt_dlp
+import re
 
 # Load environment variables from .env file
 load_dotenv()
@@ -22,6 +24,47 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 # Initialize database
 init_db(app)
+
+# Helper functions for video URL handling
+def is_video_url(url):
+    """
+    Detect if a URL is a video link (YouTube, Vimeo, etc.)
+    Returns True for any URL that starts with http/https
+    """
+    if not url:
+        return False
+
+    url_lower = url.lower()
+
+    # Check if it's a web URL (not a local file path)
+    if url_lower.startswith('http://') or url_lower.startswith('https://'):
+        return True
+
+    return False
+
+def get_video_duration(url):
+    """
+    Fetch video duration using yt-dlp for YouTube and other video platforms.
+    Returns duration in seconds, or None if unable to fetch.
+    """
+    try:
+        ydl_opts = {
+            'quiet': True,
+            'no_warnings': True,
+            'extract_flat': False,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            duration = info.get('duration')
+
+            if duration:
+                return int(duration)
+
+    except Exception as e:
+        print(f"Error fetching video duration for {url}: {str(e)}")
+
+    return None
 
 @app.route('/', methods=['GET'])
 def home():
@@ -81,17 +124,34 @@ def submit_video_url():
                 'message': 'Please provide a "title" field in the request body'
             }), 400
 
-        if not data or 'duration' not in data:
+        video_url = data['url']
+        video_title = data['title']
+        video_description = data.get('description', '')
+        video_topic = data.get('topic', '')
+
+        # Check if duration is provided (treat null as missing)
+        video_duration = data.get('duration')
+        if video_duration is None:
+            video_duration = None
+
+        # If duration is not provided (or null) and it's a video URL, try to fetch it automatically
+        if not video_duration and is_video_url(video_url):
+            print(f"Duration not provided for video URL {video_url}, attempting to fetch automatically...")
+            video_duration = get_video_duration(video_url)
+
+            if video_duration:
+                print(f"Successfully fetched duration: {video_duration} seconds")
+            else:
+                return jsonify({
+                    'error': 'Unable to fetch video duration',
+                    'message': 'Could not automatically fetch video duration. Please provide a "duration" field (in seconds) in the request body or check if the URL is valid.'
+                }), 400
+        elif not video_duration:
+            # For non-video URLs (local files), duration is required
             return jsonify({
                 'error': 'Missing video duration',
                 'message': 'Please provide a "duration" field (in seconds) in the request body'
             }), 400
-
-        video_url = data['url']
-        video_title = data['title']
-        video_duration = data['duration']
-        video_description = data.get('description', '')
-        video_topic = data.get('topic', '')
 
         # Validate URL is not empty
         if not video_url.strip():
@@ -107,18 +167,20 @@ def submit_video_url():
                 'message': 'Video title cannot be empty'
             }), 400
 
-        # Validate duration is a positive number
-        try:
-            video_duration = int(video_duration)
-            if video_duration <= 0:
+        # Validate duration is a positive number (if not already fetched as int)
+        if not isinstance(video_duration, int):
+            try:
+                video_duration = int(video_duration)
+            except (ValueError, TypeError):
                 return jsonify({
-                    'error': 'Invalid duration',
-                    'message': 'Video duration must be a positive number (in seconds)'
+                    'error': 'Invalid duration format',
+                    'message': 'Video duration must be a number (in seconds)'
                 }), 400
-        except (ValueError, TypeError):
+
+        if video_duration <= 0:
             return jsonify({
-                'error': 'Invalid duration format',
-                'message': 'Video duration must be a number (in seconds)'
+                'error': 'Invalid duration',
+                'message': 'Video duration must be a positive number (in seconds)'
             }), 400
 
         # Create video record
@@ -242,17 +304,34 @@ def submit_multiple_videos():
                     'message': f'Please provide a "title" field for video at index {idx}'
                 }), 400
 
-            if not video_data or 'duration' not in video_data:
+            video_url = video_data['url']
+            video_title = video_data['title']
+            video_description = video_data.get('description', '')
+            video_topic = video_data.get('topic', '')
+
+            # Check if duration is provided (treat null as missing)
+            video_duration = video_data.get('duration')
+            if video_duration is None:
+                video_duration = None
+
+            # If duration is not provided (or null) and it's a video URL, try to fetch it automatically
+            if not video_duration and is_video_url(video_url):
+                print(f"Duration not provided for video URL {video_url} at index {idx}, attempting to fetch automatically...")
+                video_duration = get_video_duration(video_url)
+
+                if video_duration:
+                    print(f"Successfully fetched duration: {video_duration} seconds for video at index {idx}")
+                else:
+                    return jsonify({
+                        'error': f'Unable to fetch video duration at index {idx}',
+                        'message': f'Could not automatically fetch video duration for video at index {idx}. Please provide a "duration" field (in seconds) or check if the URL is valid.'
+                    }), 400
+            elif not video_duration:
+                # For non-video URLs (local files), duration is required
                 return jsonify({
                     'error': f'Missing video duration at index {idx}',
                     'message': f'Please provide a "duration" field (in seconds) for video at index {idx}'
                 }), 400
-
-            video_url = video_data['url']
-            video_title = video_data['title']
-            video_duration = video_data['duration']
-            video_description = video_data.get('description', '')
-            video_topic = video_data.get('topic', '')
 
             # Validate URL is not empty
             if not video_url.strip():
@@ -268,18 +347,20 @@ def submit_multiple_videos():
                     'message': f'Video title cannot be empty for video at index {idx}'
                 }), 400
 
-            # Validate duration is a positive number
-            try:
-                video_duration = int(video_duration)
-                if video_duration <= 0:
+            # Validate duration is a positive number (if not already fetched as int)
+            if not isinstance(video_duration, int):
+                try:
+                    video_duration = int(video_duration)
+                except (ValueError, TypeError):
                     return jsonify({
-                        'error': f'Invalid duration at index {idx}',
-                        'message': f'Video duration must be a positive number (in seconds) for video at index {idx}'
+                        'error': f'Invalid duration format at index {idx}',
+                        'message': f'Video duration must be a number (in seconds) for video at index {idx}'
                     }), 400
-            except (ValueError, TypeError):
+
+            if video_duration <= 0:
                 return jsonify({
-                    'error': f'Invalid duration format at index {idx}',
-                    'message': f'Video duration must be a number (in seconds) for video at index {idx}'
+                    'error': f'Invalid duration at index {idx}',
+                    'message': f'Video duration must be a positive number (in seconds) for video at index {idx}'
                 }), 400
 
             # Create video record

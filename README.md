@@ -156,6 +156,7 @@ The frontend will automatically connect to the backend API.
 - PostgreSQL with psycopg2-binary 2.9.9 (Database)
 - Flask-CORS 4.0.0 (Cross-Origin Resource Sharing)
 - python-dotenv 1.0.0 (Environment variable management)
+- yt-dlp 2024.12.13 (Automatic video duration fetching)
 
 **Frontend:**
 - React 18
@@ -165,6 +166,7 @@ The frontend will automatically connect to the backend API.
 ## Features
 
 - **Video Management**: Add single or multiple videos with metadata (title, description, topic, duration)
+- **Automatic Duration Fetching**: For YouTube and other video URLs, duration is automatically fetched if not provided
 - **Query Management**: Create and manage queries for each video with status tracking (pending/finished)
 - **Timestamped Annotations**: Add annotations with start/end timestamps and detailed notes for each query
 - **Export to JSON**: Export all video data including queries and annotations to JSON format
