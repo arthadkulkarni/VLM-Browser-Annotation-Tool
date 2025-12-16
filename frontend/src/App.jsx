@@ -13,7 +13,7 @@ const timestampToSeconds = (timestamp) => {
 }
 
 // Helper function to determine video type and get embed URL
-const getVideoEmbedInfo = (url) => {
+const getVideoEmbedInfo = (url, videoId) => {
   // YouTube patterns
   const youtubeRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/
   const youtubeMatch = url.match(youtubeRegex)
@@ -32,6 +32,19 @@ const getVideoEmbedInfo = (url) => {
     return {
       type: 'vimeo',
       embedUrl: `https://player.vimeo.com/video/${vimeoMatch[1]}`,
+      thumbnailUrl: null
+    }
+  }
+
+  // Check if it's a local video file (has video extension and doesn't start with http)
+  const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']
+  const isLocalFile = videoExtensions.some(ext => url.toLowerCase().endsWith(ext)) && !url.startsWith('http')
+
+  if (isLocalFile && videoId) {
+    // Use the backend proxy endpoint for local files
+    return {
+      type: 'direct',
+      embedUrl: `/api/serve_video/${videoId}`,
       thumbnailUrl: null
     }
   }
@@ -78,7 +91,7 @@ function App() {
   // Auto-play video when entering annotations tab
   useEffect(() => {
     if (activeTab === 'annotations' && selectedVideo) {
-      const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+      const embedInfo = getVideoEmbedInfo(selectedVideo.url, selectedVideo.id)
 
       // Small delay to ensure video player is mounted
       const timer = setTimeout(() => {
@@ -452,7 +465,7 @@ function App() {
 
     if (!selectedVideo) return
 
-    const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+    const embedInfo = getVideoEmbedInfo(selectedVideo.url, selectedVideo.id)
 
     if (embedInfo.type === 'direct') {
       // For direct video files, use the video element's currentTime
@@ -699,7 +712,7 @@ function App() {
               ) : (
                 <div className="videos-list">
                   {videos.map((video) => {
-                    const embedInfo = getVideoEmbedInfo(video.url)
+                    const embedInfo = getVideoEmbedInfo(video.url, video.id)
                     return (
                       <div
                         key={video.id}
@@ -897,7 +910,7 @@ function App() {
                   borderRadius: '8px'
                 }}>
                   {(() => {
-                    const embedInfo = getVideoEmbedInfo(selectedVideo.url)
+                    const embedInfo = getVideoEmbedInfo(selectedVideo.url, selectedVideo.id)
 
                     if (embedInfo.type === 'direct') {
                       // Direct video file (MP4, WebM, etc.)

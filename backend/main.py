@@ -1,6 +1,7 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 from database import db, init_db
 from models import Video, Query, Annotation
@@ -8,7 +9,7 @@ from models import Video, Query, Annotation
 # Load environment variables from .env file
 load_dotenv()
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 CORS(app)
 
 # Database configuration - PostgreSQL only
@@ -422,6 +423,85 @@ def health_check():
         'status': 'healthy',
         'message': 'Backend is running'
     }), 200
+
+
+@app.route('/api/serve_video/<int:video_id>', methods=['GET'])
+def serve_video(video_id):
+    """
+    Serve video files. Handles local file paths by serving them through the backend.
+    For remote URLs (YouTube, Vimeo), returns the original URL.
+    """
+    try:
+        video = db.session.get(Video, video_id)
+        if not video:
+            return jsonify({
+                'error': 'Not found',
+                'message': f'Video with ID {video_id} not found'
+            }), 404
+
+        video_url = video.url
+
+        # Check if it's a local file (ends with video extension and doesn't start with http)
+        video_extensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']
+        is_local_file = any(video_url.lower().endswith(ext) for ext in video_extensions) and not video_url.startswith('http')
+
+        if is_local_file:
+            # Try multiple possible locations for the video file
+            possible_paths = [
+                # Exact path as provided (could be absolute or relative)
+                video_url,
+                # Expand ~ to home directory
+                os.path.expanduser(video_url),
+                # In static/videos directory
+                os.path.join(os.path.dirname(__file__), 'static', 'videos', os.path.basename(video_url)),
+                # In project root/videos directory
+                os.path.join(os.path.dirname(os.path.dirname(__file__)), 'videos', os.path.basename(video_url)),
+                # In Downloads folder
+                os.path.join(os.path.expanduser('~'), 'Downloads', os.path.basename(video_url)),
+                # In current working directory
+                os.path.join(os.getcwd(), video_url),
+                os.path.join(os.getcwd(), os.path.basename(video_url)),
+            ]
+
+            video_path = None
+            for path in possible_paths:
+                abs_path = os.path.abspath(path)
+                if os.path.exists(abs_path) and os.path.isfile(abs_path):
+                    video_path = abs_path
+                    break
+
+            if not video_path:
+                return jsonify({
+                    'error': 'Video file not found',
+                    'message': f'Video file "{video_url}" not found. Please provide the full path to the video file in the JSON (e.g., "/Users/username/Downloads/video.mp4")',
+                    'searched_paths': [os.path.abspath(p) for p in possible_paths]
+                }), 404
+
+            # Detect MIME type from file extension
+            ext = os.path.splitext(video_path)[1].lower()
+            mime_types = {
+                '.mp4': 'video/mp4',
+                '.webm': 'video/webm',
+                '.ogg': 'video/ogg',
+                '.mov': 'video/quicktime',
+                '.avi': 'video/x-msvideo',
+                '.mkv': 'video/x-matroska'
+            }
+            mimetype = mime_types.get(ext, 'video/mp4')
+
+            return send_file(video_path, mimetype=mimetype)
+        else:
+            # For remote URLs (YouTube, Vimeo, etc.), return the URL as JSON
+            return jsonify({
+                'type': 'remote',
+                'url': video_url
+            }), 200
+
+    except Exception as e:
+        return jsonify({
+            'error': 'Server error',
+            'message': str(e)
+        }), 500
 
 
 @app.route('/api/videos/<int:video_id>/queries', methods=['POST'])
