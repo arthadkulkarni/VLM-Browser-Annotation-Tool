@@ -34,3 +34,9 @@ pnpm-debug.log*
 
 # OS
 Thumbs.db
+
+# Archives
+*.tar.gz
+*.zip
+*.tar
+*.rar

@@ -183,16 +183,25 @@ def submit_video_url():
                 'message': 'Video duration must be a positive number (in seconds)'
             }), 400
 
-        # Create video record
-        video = Video(
-            url=video_url,
-            title=video_title,
-            description=video_description,
-            topic=video_topic,
-            duration=video_duration
-        )
-        db.session.add(video)
-        db.session.flush()  # Get video ID before committing
+        # Check if video with this URL already exists
+        existing_video = Video.query.filter_by(url=video_url).first()
+
+        if existing_video:
+            # Video exists, we'll add queries/annotations to it
+            video = existing_video
+            video_existed = True
+        else:
+            # Create new video record
+            video = Video(
+                url=video_url,
+                title=video_title,
+                description=video_description,
+                topic=video_topic,
+                duration=video_duration
+            )
+            db.session.add(video)
+            db.session.flush()  # Get video ID before committing
+            video_existed = False
 
         # Process queries if provided
         queries_data = data.get('queries', [])
@@ -201,16 +210,28 @@ def submit_video_url():
 
         for query_item in queries_data:
             if 'query_text' in query_item and query_item['query_text'].strip():
-                # Create query
-                query = Query(
-                    video_id=video.id,
-                    query_text=query_item['query_text']
-                )
-                db.session.add(query)
-                db.session.flush()  # Get query ID before processing annotations
-                created_queries.append(query.to_dict())
+                query_text = query_item['query_text'].strip()
 
-                # Process annotations if provided
+                # Check if this query already exists for this video
+                existing_query = Query.query.filter_by(
+                    video_id=video.id,
+                    query_text=query_text
+                ).first()
+
+                if existing_query:
+                    # Use existing query
+                    query = existing_query
+                else:
+                    # Create new query
+                    query = Query(
+                        video_id=video.id,
+                        query_text=query_text
+                    )
+                    db.session.add(query)
+                    db.session.flush()  # Get query ID before processing annotations
+                    created_queries.append(query.to_dict())
+
+                # Process annotations (always add new annotations, even for existing queries)
                 annotations_data = query_item.get('annotations', [])
                 for annotation_item in annotations_data:
                     if 'notes' in annotation_item:
@@ -225,10 +246,16 @@ def submit_video_url():
 
         db.session.commit()
 
+        if video_existed:
+            message = f'Annotations and queries added to existing video: {video.title}'
+        else:
+            message = 'Video data saved to database'
+
         return jsonify({
             'status': 'success',
-            'message': 'Video data saved to database',
+            'message': message,
             'video': video.to_dict(),
+            'video_existed': video_existed,
             'queries_created': len(created_queries),
             'annotations_created': len(created_annotations)
         }), 201
@@ -363,16 +390,25 @@ def submit_multiple_videos():
                     'message': f'Video duration must be a positive number (in seconds) for video at index {idx}'
                 }), 400
 
-            # Create video record
-            video = Video(
-                url=video_url,
-                title=video_title,
-                description=video_description,
-                topic=video_topic,
-                duration=video_duration
-            )
-            db.session.add(video)
-            db.session.flush()  # Get video ID before committing
+            # Check if video with this URL already exists
+            existing_video = Video.query.filter_by(url=video_url).first()
+
+            if existing_video:
+                # Video exists, we'll add queries/annotations to it
+                video = existing_video
+                video_existed = True
+            else:
+                # Create new video record
+                video = Video(
+                    url=video_url,
+                    title=video_title,
+                    description=video_description,
+                    topic=video_topic,
+                    duration=video_duration
+                )
+                db.session.add(video)
+                db.session.flush()  # Get video ID before committing
+                video_existed = False
 
             # Process queries if provided
             queries_data = video_data.get('queries', [])
@@ -381,16 +417,28 @@ def submit_multiple_videos():
 
             for query_item in queries_data:
                 if 'query_text' in query_item and query_item['query_text'].strip():
-                    # Create query
-                    query = Query(
-                        video_id=video.id,
-                        query_text=query_item['query_text']
-                    )
-                    db.session.add(query)
-                    db.session.flush()  # Get query ID before processing annotations
-                    created_queries.append(query.to_dict())
+                    query_text = query_item['query_text'].strip()
 
-                    # Process annotations if provided
+                    # Check if this query already exists for this video
+                    existing_query = Query.query.filter_by(
+                        video_id=video.id,
+                        query_text=query_text
+                    ).first()
+
+                    if existing_query:
+                        # Use existing query
+                        query = existing_query
+                    else:
+                        # Create new query
+                        query = Query(
+                            video_id=video.id,
+                            query_text=query_text
+                        )
+                        db.session.add(query)
+                        db.session.flush()  # Get query ID before processing annotations
+                        created_queries.append(query.to_dict())
+
+                    # Process annotations (always add new annotations, even for existing queries)
                     annotations_data = query_item.get('annotations', [])
                     for annotation_item in annotations_data:
                         if 'notes' in annotation_item:
@@ -408,16 +456,31 @@ def submit_multiple_videos():
 
             results.append({
                 'video': video.to_dict(),
+                'video_existed': video_existed,
                 'queries_created': len(created_queries),
                 'annotations_created': len(created_annotations)
             })
 
         db.session.commit()
 
+        # Count how many videos were new vs existing
+        new_videos = sum(1 for r in results if not r['video_existed'])
+        existing_videos = sum(1 for r in results if r['video_existed'])
+
+        message_parts = []
+        if new_videos > 0:
+            message_parts.append(f'{new_videos} new video(s) created')
+        if existing_videos > 0:
+            message_parts.append(f'{existing_videos} existing video(s) updated with new annotations/queries')
+
+        message = 'Successfully processed: ' + ', '.join(message_parts)
+
         return jsonify({
             'status': 'success',
-            'message': f'Successfully imported {len(results)} video(s)',
-            'videos_imported': len(results),
+            'message': message,
+            'videos_processed': len(results),
+            'new_videos': new_videos,
+            'existing_videos': existing_videos,
             'total_queries_created': total_queries,
             'total_annotations_created': total_annotations,
             'results': results
