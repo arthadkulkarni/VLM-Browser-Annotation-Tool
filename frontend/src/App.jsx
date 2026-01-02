@@ -1246,14 +1246,13 @@ function App() {
                 </div>
 
                 <div className="form-group">
-                  <label htmlFor="notes">Description:</label>
+                  <label htmlFor="notes">Description (optional):</label>
                   <textarea
                     id="notes"
                     value={annotationData.notes}
                     onChange={(e) => setAnnotationData({...annotationData, notes: e.target.value})}
                     placeholder="Describe what happens in this time range..."
                     rows="4"
-                    required
                   />
                 </div>
 
