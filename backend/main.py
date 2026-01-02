@@ -93,6 +93,7 @@ def submit_video_url():
     {
         "url": "video_url",
         "title": "video_title",
+        "annotator": "annotator_name",
         "description": "video_description" (optional),
         "topic": "video_topic" (optional),
         "queries": [  (optional)
@@ -124,8 +125,15 @@ def submit_video_url():
                 'message': 'Please provide a "title" field in the request body'
             }), 400
 
+        if not data or 'annotator' not in data:
+            return jsonify({
+                'error': 'Missing annotator name',
+                'message': 'Please provide an "annotator" field in the request body'
+            }), 400
+
         video_url = data['url']
         video_title = data['title']
+        video_annotator = data['annotator']
         video_description = data.get('description', '')
         video_topic = data.get('topic', '')
 
@@ -141,6 +149,13 @@ def submit_video_url():
             return jsonify({
                 'error': 'Empty title',
                 'message': 'Video title cannot be empty'
+            }), 400
+
+        # Validate annotator is not empty
+        if not video_annotator.strip():
+            return jsonify({
+                'error': 'Empty annotator name',
+                'message': 'Annotator name cannot be empty'
             }), 400
 
         # Check if video with this URL already exists
@@ -199,7 +214,8 @@ def submit_video_url():
                 title=video_title,
                 description=video_description,
                 topic=video_topic,
-                duration=video_duration
+                duration=video_duration,
+                annotator=video_annotator
             )
             db.session.add(video)
             db.session.flush()  # Get video ID before committing
@@ -281,6 +297,7 @@ def submit_multiple_videos():
         {
             "url": "video_url",
             "title": "video_title",
+            "annotator": "annotator_name",
             "description": "video_description" (optional),
             "topic": "video_topic" (optional),
             "duration": duration_in_seconds,
@@ -333,8 +350,15 @@ def submit_multiple_videos():
                     'message': f'Please provide a "title" field for video at index {idx}'
                 }), 400
 
+            if not video_data or 'annotator' not in video_data:
+                return jsonify({
+                    'error': f'Missing annotator name at index {idx}',
+                    'message': f'Please provide an "annotator" field for video at index {idx}'
+                }), 400
+
             video_url = video_data['url']
             video_title = video_data['title']
+            video_annotator = video_data['annotator']
             video_description = video_data.get('description', '')
             video_topic = video_data.get('topic', '')
 
@@ -350,6 +374,13 @@ def submit_multiple_videos():
                 return jsonify({
                     'error': f'Empty title at index {idx}',
                     'message': f'Video title cannot be empty for video at index {idx}'
+                }), 400
+
+            # Validate annotator is not empty
+            if not video_annotator.strip():
+                return jsonify({
+                    'error': f'Empty annotator name at index {idx}',
+                    'message': f'Annotator name cannot be empty for video at index {idx}'
                 }), 400
 
             # Check if video with this URL already exists
@@ -408,7 +439,8 @@ def submit_multiple_videos():
                     title=video_title,
                     description=video_description,
                     topic=video_topic,
-                    duration=video_duration
+                    duration=video_duration,
+                    annotator=video_annotator
                 )
                 db.session.add(video)
                 db.session.flush()  # Get video ID before committing

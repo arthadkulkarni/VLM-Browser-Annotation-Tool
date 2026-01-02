@@ -16,6 +16,7 @@ class Video(db.Model):
     topic = db.Column(db.String(200))  # Video topic/category
     duration = db.Column(db.Integer)  # Duration in seconds
     notes = db.Column(db.Text)
+    annotator = db.Column(db.String(200), nullable=False)  # Name of the person assigned to annotate
 
     # Relationship to queries
     queries = db.relationship('Query', backref='video', lazy=True, cascade='all, delete-orphan')
@@ -31,7 +32,8 @@ class Video(db.Model):
             'description': self.description,
             'topic': self.topic,
             'duration': self.duration,
-            'notes': self.notes
+            'notes': self.notes,
+            'annotator': self.annotator
         }
 
     def __repr__(self):

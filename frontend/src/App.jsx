@@ -546,6 +546,7 @@ function App() {
           return {
             url: video.url,
             title: video.title,
+            annotator: video.annotator,
             description: video.description || '',
             topic: video.topic || '',
             duration: video.duration,
@@ -624,6 +625,8 @@ function App() {
                     </div>
                     <div style={{ marginTop: '8px', color: '#666', fontSize: '14px' }}>
                       <strong>Video:</strong> {jsonPreview.title || 'No title'}
+                      <br />
+                      <strong>Annotator:</strong> {jsonPreview.annotator || 'Not specified'}
                       {jsonPreview.queries && (
                         <>
                           <br />
@@ -663,6 +666,7 @@ function App() {
 {`{
   "url": "https://youtube.com/watch?v=...",
   "title": "Video Title",
+  "annotator": "John Doe",
   "duration": 180,
   "description": "Video description (optional)",
   "topic": "Video topic/category (optional)",
@@ -685,6 +689,7 @@ function App() {
                   <ul style={{ margin: '5px 0', paddingLeft: '20px' }}>
                     <li><code>url</code>: Video URL (YouTube, Vimeo, or direct video file)</li>
                     <li><code>title</code>: Video title</li>
+                    <li><code>annotator</code>: Name of the person assigned to annotate this video</li>
                     <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
                   </ul>
                   <strong>Optional fields:</strong> description, topic, queries, annotations
@@ -739,6 +744,14 @@ function App() {
                             </span>
                           </div>
                           <div className="video-title">{video.title || 'Untitled Video'}</div>
+                          <div className="video-annotator" style={{
+                            fontSize: '0.9rem',
+                            color: '#555',
+                            marginTop: '4px',
+                            fontStyle: 'italic'
+                          }}>
+                            Annotator: {video.annotator}
+                          </div>
                           <div className="video-date">
                             {new Date(video.created_at).toLocaleString()}
                           </div>
