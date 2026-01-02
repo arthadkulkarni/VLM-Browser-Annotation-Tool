@@ -83,10 +83,25 @@ function App() {
     notes: ''
   })
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null)
+  const [showAnnotatorDropdown, setShowAnnotatorDropdown] = useState(false)
 
   // Ref for the video player
   const videoPlayerRef = useRef(null)
   const iframePlayerRef = useRef(null)
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showAnnotatorDropdown && !event.target.closest('.export-dropdown-container')) {
+        setShowAnnotatorDropdown(false)
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+    }
+  }, [showAnnotatorDropdown])
 
   // Auto-play video when entering annotations tab
   useEffect(() => {
@@ -211,6 +226,7 @@ function App() {
 
   const handleTabChange = (tab) => {
     setActiveTab(tab)
+    setShowAnnotatorDropdown(false) // Close dropdown when changing tabs
     if (tab === 'history') {
       fetchVideos()
       setSelectedVideo(null)
@@ -507,7 +523,13 @@ function App() {
     }
   }
 
-  const handleExportJSON = async () => {
+  // Get unique annotators from videos
+  const getUniqueAnnotators = () => {
+    const annotators = videos.map(video => video.annotator).filter(Boolean)
+    return [...new Set(annotators)].sort()
+  }
+
+  const handleExportJSON = async (annotatorFilter = null) => {
     try {
       // Fetch all videos
       const videosResponse = await fetch('/api/videos')
@@ -518,9 +540,19 @@ function App() {
         return
       }
 
+      // Filter videos by annotator if specified
+      let videosToExport = videosData.videos
+      if (annotatorFilter) {
+        videosToExport = videosData.videos.filter(video => video.annotator === annotatorFilter)
+        if (videosToExport.length === 0) {
+          alert(`No videos found for annotator: ${annotatorFilter}`)
+          return
+        }
+      }
+
       // Fetch queries and annotations for each video
       const exportData = await Promise.all(
-        videosData.videos.map(async (video) => {
+        videosToExport.map(async (video) => {
           // Fetch queries for this video
           const queriesResponse = await fetch(`/api/videos/${video.id}/queries`)
           const queriesData = await queriesResponse.json()
@@ -561,11 +593,15 @@ function App() {
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
-      link.download = `video_annotations_export_${new Date().toISOString().split('T')[0]}.json`
+      const filename = annotatorFilter
+        ? `video_annotations_${annotatorFilter.replace(/\s+/g, '_')}_${new Date().toISOString().split('T')[0]}.json`
+        : `video_annotations_export_${new Date().toISOString().split('T')[0]}.json`
+      link.download = filename
       document.body.appendChild(link)
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
+      setShowAnnotatorDropdown(false) // Close dropdown after export
     } catch (error) {
       console.error('Error exporting JSON:', error)
       alert('Failed to export JSON')
@@ -702,10 +738,121 @@ function App() {
             <div className="history-tab">
               <div className="videos-header">
                 <h2>Submitted Videos</h2>
-                <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={handleExportJSON} className="export-btn" style={{ background: '#4CAF50' }}>
-                    Export JSON
-                  </button>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <div className="export-dropdown-container" style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => handleExportJSON()}
+                      className="export-btn"
+                      style={{ background: '#4CAF50', borderRadius: '4px 0 0 4px' }}
+                    >
+                      Export JSON
+                    </button>
+                    <button
+                      onClick={() => setShowAnnotatorDropdown(!showAnnotatorDropdown)}
+                      className="export-btn"
+                      style={{
+                        background: '#45a049',
+                        borderRadius: '0 4px 4px 0',
+                        padding: '8px 12px',
+                        marginLeft: '-1px',
+                        minWidth: 'auto'
+                      }}
+                      title="Export by annotator"
+                    >
+                      ▼
+                    </button>
+                    {showAnnotatorDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        marginTop: '8px',
+                        background: 'white',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08)',
+                        minWidth: '240px',
+                        zIndex: 1000,
+                        maxHeight: '320px',
+                        overflowY: 'auto',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f0f0f0',
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          color: '#555',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          background: '#fafafa'
+                        }}>
+                          Export by Annotator
+                        </div>
+                        {getUniqueAnnotators().length === 0 ? (
+                          <div style={{
+                            padding: '20px 16px',
+                            color: '#999',
+                            fontSize: '0.9rem',
+                            textAlign: 'center'
+                          }}>
+                            No annotators found
+                          </div>
+                        ) : (
+                          <div style={{ padding: '4px 0' }}>
+                            {getUniqueAnnotators().map(annotator => (
+                              <button
+                                key={annotator}
+                                onClick={() => handleExportJSON(annotator)}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  width: '100%',
+                                  padding: '12px 16px',
+                                  border: 'none',
+                                  background: 'white',
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  fontSize: '0.95rem',
+                                  color: '#333',
+                                  transition: 'all 0.15s ease',
+                                  borderLeft: '3px solid transparent'
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.target.style.background = '#f8f9fa'
+                                  e.target.style.borderLeftColor = '#4CAF50'
+                                  e.target.style.paddingLeft = '20px'
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.target.style.background = 'white'
+                                  e.target.style.borderLeftColor = 'transparent'
+                                  e.target.style.paddingLeft = '16px'
+                                }}
+                              >
+                                <span style={{
+                                  fontWeight: '500',
+                                  color: '#2c3e50'
+                                }}>
+                                  {annotator}
+                                </span>
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  background: '#e8f5e9',
+                                  color: '#4CAF50',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600'
+                                }}>
+                                  {videos.filter(v => v.annotator === annotator).length}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <button onClick={fetchVideos} className="refresh-btn">
                     Refresh
                   </button>
