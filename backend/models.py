@@ -79,7 +79,7 @@ class Annotation(db.Model):
     end_timestamp = db.Column(db.String(8))    # End time in HH:MM:SS format
 
     # Description
-    notes = db.Column(db.Text, nullable=False)  # Description of what happens
+    notes = db.Column(db.Text, nullable=True)  # Description of what happens (optional)
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)

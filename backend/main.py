@@ -236,15 +236,15 @@ def submit_video_url():
                 # Process annotations (always add new annotations, even for existing queries)
                 annotations_data = query_item.get('annotations', [])
                 for annotation_item in annotations_data:
-                    if 'notes' in annotation_item:
-                        annotation = Annotation(
-                            query_id=query.id,
-                            start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
-                            end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                            notes=annotation_item['notes']
-                        )
-                        db.session.add(annotation)
-                        created_annotations.append(annotation_item)
+                    # Notes are optional - create annotation as long as we have timestamp data
+                    annotation = Annotation(
+                        query_id=query.id,
+                        start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
+                        end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
+                        notes=annotation_item.get('notes', '')
+                    )
+                    db.session.add(annotation)
+                    created_annotations.append(annotation_item)
 
         db.session.commit()
 
@@ -445,15 +445,15 @@ def submit_multiple_videos():
                     # Process annotations (always add new annotations, even for existing queries)
                     annotations_data = query_item.get('annotations', [])
                     for annotation_item in annotations_data:
-                        if 'notes' in annotation_item:
-                            annotation = Annotation(
-                                query_id=query.id,
-                                start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
-                                end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                                notes=annotation_item['notes']
-                            )
-                            db.session.add(annotation)
-                            created_annotations.append(annotation_item)
+                        # Notes are optional - create annotation as long as we have timestamp data
+                        annotation = Annotation(
+                            query_id=query.id,
+                            start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
+                            end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
+                            notes=annotation_item.get('notes', '')
+                        )
+                        db.session.add(annotation)
+                        created_annotations.append(annotation_item)
 
             total_queries += len(created_queries)
             total_annotations += len(created_annotations)
@@ -851,18 +851,12 @@ def create_annotation(query_id):
 
         data = request.get_json()
 
-        if not data or 'notes' not in data:
-            return jsonify({
-                'error': 'Missing description',
-                'message': 'Please provide a "notes" field with the description'
-            }), 400
-
-        # Create new annotation
+        # Create new annotation (notes are optional)
         annotation = Annotation(
             query_id=query_id,
             start_timestamp=data.get('start_timestamp', '00:00:00'),
             end_timestamp=data.get('end_timestamp', '00:00:00'),
-            notes=data.get('notes')
+            notes=data.get('notes', '')
         )
         db.session.add(annotation)
         db.session.commit()
