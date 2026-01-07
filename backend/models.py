@@ -17,6 +17,7 @@ class Video(db.Model):
     duration = db.Column(db.Integer)  # Duration in seconds
     notes = db.Column(db.Text)
     annotator = db.Column(db.String(200), nullable=False)  # Name of the person assigned to annotate
+    status = db.Column(db.String(50), default='pending')  # pending or finished (based on queries)
 
     # Relationship to queries
     queries = db.relationship('Query', backref='video', lazy=True, cascade='all, delete-orphan')
@@ -33,7 +34,8 @@ class Video(db.Model):
             'topic': self.topic,
             'duration': self.duration,
             'notes': self.notes,
-            'annotator': self.annotator
+            'annotator': self.annotator,
+            'status': self.status
         }
 
     def __repr__(self):

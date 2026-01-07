@@ -248,6 +248,11 @@ button:disabled {
   color: #856404;
 }
 
+.status-finished {
+  background-color: #d1e7dd;
+  color: #0f5132;
+}
+
 .status-processing {
   background-color: #cfe2ff;
   color: #084298;

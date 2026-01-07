@@ -84,6 +84,8 @@ function App() {
   })
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null)
   const [showAnnotatorDropdown, setShowAnnotatorDropdown] = useState(false)
+  const [selectedAnnotatorFilter, setSelectedAnnotatorFilter] = useState(null)
+  const [showFilterDropdown, setShowFilterDropdown] = useState(false)
 
   // Ref for the video player
   const videoPlayerRef = useRef(null)
@@ -95,13 +97,16 @@ function App() {
       if (showAnnotatorDropdown && !event.target.closest('.export-dropdown-container')) {
         setShowAnnotatorDropdown(false)
       }
+      if (showFilterDropdown && !event.target.closest('.filter-dropdown-container')) {
+        setShowFilterDropdown(false)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showAnnotatorDropdown])
+  }, [showAnnotatorDropdown, showFilterDropdown])
 
   // Auto-play video when entering annotations tab
   useEffect(() => {
@@ -227,6 +232,7 @@ function App() {
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     setShowAnnotatorDropdown(false) // Close dropdown when changing tabs
+    setShowFilterDropdown(false) // Close filter dropdown when changing tabs
     if (tab === 'history') {
       fetchVideos()
       setSelectedVideo(null)
@@ -529,6 +535,14 @@ function App() {
     return [...new Set(annotators)].sort()
   }
 
+  // Get filtered videos based on selected annotator
+  const getFilteredVideos = () => {
+    if (!selectedAnnotatorFilter) {
+      return videos
+    }
+    return videos.filter(video => video.annotator === selectedAnnotatorFilter)
+  }
+
   const handleExportJSON = async (annotatorFilter = null) => {
     try {
       // Fetch all videos
@@ -739,6 +753,133 @@ function App() {
               <div className="videos-header">
                 <h2>Submitted Videos</h2>
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <div className="filter-dropdown-container" style={{ position: 'relative' }}>
+                    <button
+                      onClick={() => {
+                        setSelectedAnnotatorFilter(null)
+                        setShowFilterDropdown(false)
+                      }}
+                      className="export-btn"
+                      style={{
+                        background: selectedAnnotatorFilter ? '#2196F3' : '#757575',
+                        borderRadius: '4px 0 0 4px'
+                      }}
+                    >
+                      {selectedAnnotatorFilter ? `Filter: ${selectedAnnotatorFilter}` : 'Filter by Annotator'}
+                    </button>
+                    <button
+                      onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+                      className="export-btn"
+                      style={{
+                        background: selectedAnnotatorFilter ? '#1976D2' : '#616161',
+                        borderRadius: '0 4px 4px 0',
+                        padding: '8px 12px',
+                        marginLeft: '-1px',
+                        minWidth: 'auto'
+                      }}
+                      title="Select annotator to filter"
+                    >
+                      ▼
+                    </button>
+                    {showFilterDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
+                        marginTop: '8px',
+                        background: 'white',
+                        border: '1px solid #e0e0e0',
+                        borderRadius: '8px',
+                        boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08)',
+                        minWidth: '240px',
+                        zIndex: 1000,
+                        maxHeight: '320px',
+                        overflowY: 'auto',
+                        overflow: 'hidden'
+                      }}>
+                        <div style={{
+                          padding: '12px 16px',
+                          borderBottom: '1px solid #f0f0f0',
+                          fontSize: '0.8rem',
+                          fontWeight: '600',
+                          color: '#555',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px',
+                          background: '#fafafa'
+                        }}>
+                          Filter by Annotator
+                        </div>
+                        {getUniqueAnnotators().length === 0 ? (
+                          <div style={{
+                            padding: '20px 16px',
+                            color: '#999',
+                            fontSize: '0.9rem',
+                            textAlign: 'center'
+                          }}>
+                            No annotators found
+                          </div>
+                        ) : (
+                          <div style={{ padding: '4px 0' }}>
+                            {getUniqueAnnotators().map(annotator => (
+                              <button
+                                key={annotator}
+                                onClick={() => {
+                                  setSelectedAnnotatorFilter(annotator)
+                                  setShowFilterDropdown(false)
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'space-between',
+                                  width: '100%',
+                                  padding: '12px 16px',
+                                  border: 'none',
+                                  background: selectedAnnotatorFilter === annotator ? '#e3f2fd' : 'white',
+                                  textAlign: 'left',
+                                  cursor: 'pointer',
+                                  fontSize: '0.95rem',
+                                  color: '#333',
+                                  transition: 'all 0.15s ease',
+                                  borderLeft: selectedAnnotatorFilter === annotator ? '3px solid #2196F3' : '3px solid transparent'
+                                }}
+                                onMouseEnter={(e) => {
+                                  if (selectedAnnotatorFilter !== annotator) {
+                                    e.target.style.background = '#f8f9fa'
+                                    e.target.style.borderLeftColor = '#2196F3'
+                                    e.target.style.paddingLeft = '20px'
+                                  }
+                                }}
+                                onMouseLeave={(e) => {
+                                  if (selectedAnnotatorFilter !== annotator) {
+                                    e.target.style.background = 'white'
+                                    e.target.style.borderLeftColor = 'transparent'
+                                    e.target.style.paddingLeft = '16px'
+                                  }
+                                }}
+                              >
+                                <span style={{
+                                  fontWeight: selectedAnnotatorFilter === annotator ? '600' : '500',
+                                  color: '#2c3e50'
+                                }}>
+                                  {annotator}
+                                </span>
+                                <span style={{
+                                  padding: '2px 8px',
+                                  borderRadius: '12px',
+                                  background: selectedAnnotatorFilter === annotator ? '#2196F3' : '#e3f2fd',
+                                  color: selectedAnnotatorFilter === annotator ? 'white' : '#2196F3',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '600'
+                                }}>
+                                  {videos.filter(v => v.annotator === annotator).length}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                   <div className="export-dropdown-container" style={{ position: 'relative' }}>
                     <button
                       onClick={() => handleExportJSON()}
@@ -861,9 +1002,11 @@ function App() {
 
               {videos.length === 0 ? (
                 <p className="no-videos">No videos submitted yet</p>
+              ) : getFilteredVideos().length === 0 ? (
+                <p className="no-videos">No videos found for annotator: {selectedAnnotatorFilter}</p>
               ) : (
                 <div className="videos-list">
-                  {videos.map((video) => {
+                  {getFilteredVideos().map((video) => {
                     const embedInfo = getVideoEmbedInfo(video.url, video.id)
                     return (
                       <div

@@ -532,9 +532,17 @@ def submit_multiple_videos():
 
 @app.route('/api/videos', methods=['GET'])
 def get_all_videos():
-    """Get all videos from the database"""
+    """Get all videos from the database, sorted by status (pending first, finished last)"""
     try:
-        videos = Video.query.order_by(Video.created_at.desc()).all()
+        # Order by status (pending before finished), then by creation date (newest first)
+        videos = Video.query.order_by(
+            db.case(
+                (Video.status == 'pending', 0),
+                (Video.status == 'finished', 1),
+                else_=2
+            ),
+            Video.created_at.desc()
+        ).all()
         return jsonify({
             'status': 'success',
             'count': len(videos),
@@ -823,6 +831,36 @@ def delete_query(query_id):
         }), 500
 
 
+def update_video_status(video_id):
+    """
+    Helper function to update video status based on its queries.
+    Video is 'finished' only if it has queries AND all queries are 'finished'.
+    Otherwise, it's 'pending'.
+    """
+    try:
+        video = db.session.get(Video, video_id)
+        if not video:
+            return False
+
+        # Get all queries for this video
+        queries = Query.query.filter_by(video_id=video_id).all()
+
+        # If there are no queries, video is pending
+        if not queries:
+            video.status = 'pending'
+        else:
+            # Check if all queries are finished
+            all_finished = all(query.status == 'finished' for query in queries)
+            video.status = 'finished' if all_finished else 'pending'
+
+        db.session.commit()
+        return True
+    except Exception as e:
+        print(f"Error updating video status: {str(e)}")
+        db.session.rollback()
+        return False
+
+
 @app.route('/api/queries/<int:query_id>/status', methods=['PUT'])
 def update_query_status(query_id):
     """Update the status of a specific query (pending or finished)"""
@@ -853,6 +891,9 @@ def update_query_status(query_id):
 
         query.status = status
         db.session.commit()
+
+        # Update the video status based on all its queries
+        update_video_status(query.video_id)
 
         return jsonify({
             'status': 'success',
