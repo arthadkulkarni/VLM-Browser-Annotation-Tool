@@ -1,6 +1,9 @@
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
 
+// Cloudflare R2 bucket URL for YouTube video backups
+const R2_BUCKET_URL = 'https://pub-65bff4cb79da43bd8324fa834e11bf15.r2.dev'
+
 // Helper function to convert timestamp (HH:MM:SS) to seconds
 const timestampToSeconds = (timestamp) => {
   if (!timestamp) return 0
@@ -18,10 +21,12 @@ const getVideoEmbedInfo = (url, videoId) => {
   const youtubeRegex = /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/
   const youtubeMatch = url.match(youtubeRegex)
   if (youtubeMatch) {
+    const ytVideoId = youtubeMatch[1]
     return {
       type: 'youtube',
-      embedUrl: `https://www.youtube.com/embed/${youtubeMatch[1]}`,
-      thumbnailUrl: `https://img.youtube.com/vi/${youtubeMatch[1]}/mqdefault.jpg`
+      embedUrl: `https://www.youtube.com/embed/${ytVideoId}`,
+      r2Url: `${R2_BUCKET_URL}/www.youtube.com_watch_v=${ytVideoId}.mp4`,
+      thumbnailUrl: `https://img.youtube.com/vi/${ytVideoId}/mqdefault.jpg`
     }
   }
 
@@ -86,6 +91,7 @@ function App() {
   const [showAnnotatorDropdown, setShowAnnotatorDropdown] = useState(false)
   const [selectedAnnotatorFilter, setSelectedAnnotatorFilter] = useState(null)
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
+  const [r2Failed, setR2Failed] = useState({}) // Track which videos failed to load from R2
 
   // Ref for the video player
   const videoPlayerRef = useRef(null)
@@ -489,14 +495,13 @@ function App() {
 
     const embedInfo = getVideoEmbedInfo(selectedVideo.url, selectedVideo.id)
 
-    if (embedInfo.type === 'direct') {
-      // For direct video files, use the video element's currentTime
-      if (videoPlayerRef.current) {
-        videoPlayerRef.current.currentTime = startTimeInSeconds
-        videoPlayerRef.current.play()
-      }
+    // Check if video is playing in HTML5 video element (direct files or R2 backup)
+    if (videoPlayerRef.current && videoPlayerRef.current.src) {
+      // For direct video files or R2 backups, use the video element's currentTime
+      videoPlayerRef.current.currentTime = startTimeInSeconds
+      videoPlayerRef.current.play()
     } else if (embedInfo.type === 'youtube') {
-      // For YouTube videos, update the iframe src with the time parameter
+      // For YouTube videos in iframe, update the iframe src with the time parameter
       if (iframePlayerRef.current) {
         const videoId = selectedVideo.url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([a-zA-Z0-9_-]+)/)[1]
         iframePlayerRef.current.src = `https://www.youtube.com/embed/${videoId}?start=${startTimeInSeconds}&autoplay=1`
@@ -1216,64 +1221,247 @@ function App() {
                     const embedInfo = getVideoEmbedInfo(selectedVideo.url, selectedVideo.id)
 
                     if (embedInfo.type === 'direct') {
-                      // Direct video file (MP4, WebM, etc.)
+                      // Direct video file (MP4, WebM, etc.) or R2 backup
                       return (
-                        <div style={{ position: 'relative' }}>
-                          <video
-                            ref={videoPlayerRef}
-                            src={selectedVideo.url}
-                            controls
-                            style={{
-                              width: '100%',
-                              maxHeight: '500px',
-                              borderRadius: '4px'
-                            }}
-                          >
-                            Your browser does not support the video tag.
-                          </video>
+                        <div>
+                          <div style={{ position: 'relative' }}>
+                            <video
+                              ref={videoPlayerRef}
+                              src={embedInfo.embedUrl}
+                              controls
+                              style={{
+                                width: '100%',
+                                maxHeight: '500px',
+                                borderRadius: '4px'
+                              }}
+                            >
+                              Your browser does not support the video tag.
+                            </video>
 
-                          {/* Annotation markers overlay */}
+                            {/* Annotation markers overlay */}
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '48px',
+                              left: '0',
+                              right: '0',
+                              height: '6px',
+                              pointerEvents: 'none',
+                              paddingLeft: '12px',
+                              paddingRight: '12px'
+                            }}>
+                              {annotations.map((annotation, index) => {
+                                const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                                const endSeconds = timestampToSeconds(annotation.end_timestamp)
+                                const videoDuration = videoPlayerRef.current?.duration || 0
+
+                                if (!videoDuration) return null
+
+                                const startPercent = (startSeconds / videoDuration) * 100
+                                const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                                return (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${startPercent}%`,
+                                      width: `${widthPercent}%`,
+                                      height: '100%',
+                                      background: 'rgba(255, 152, 0, 0.7)',
+                                      borderRadius: '2px',
+                                      boxShadow: '0 0 4px rgba(255, 152, 0, 0.8)'
+                                    }}
+                                    title={annotation.notes}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Annotation timeline (below video) */}
                           <div style={{
-                            position: 'absolute',
-                            bottom: '48px',
-                            left: '0',
-                            right: '0',
-                            height: '6px',
-                            pointerEvents: 'none',
-                            paddingLeft: '12px',
-                            paddingRight: '12px'
+                            marginTop: '12px',
+                            padding: '8px',
+                            background: '#1a1a1a',
+                            borderRadius: '4px'
                           }}>
-                            {annotations.map((annotation, index) => {
-                              const startSeconds = timestampToSeconds(annotation.start_timestamp)
-                              const endSeconds = timestampToSeconds(annotation.end_timestamp)
-                              const videoDuration = videoPlayerRef.current?.duration || 0
+                            <div style={{
+                              fontSize: '0.85rem',
+                              color: '#999',
+                              marginBottom: '6px',
+                              fontWeight: '500'
+                            }}>
+                              Annotation Timeline: {selectedVideo.duration ? `(Video Duration: ${Math.floor(selectedVideo.duration / 60)}:${String(selectedVideo.duration % 60).padStart(2, '0')})` : videoPlayerRef.current?.duration ? `(Video Duration: ${Math.floor(videoPlayerRef.current.duration / 60)}:${String(Math.floor(videoPlayerRef.current.duration % 60)).padStart(2, '0')})` : ''}
+                            </div>
+                            <div style={{
+                              position: 'relative',
+                              height: '8px',
+                              background: '#333',
+                              borderRadius: '4px',
+                              overflow: 'hidden'
+                            }}>
+                              {annotations.map((annotation, index) => {
+                                const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                                const endSeconds = timestampToSeconds(annotation.end_timestamp)
 
-                              if (!videoDuration) return null
+                                // Use video duration from player or database
+                                let videoDuration = videoPlayerRef.current?.duration || selectedVideo.duration || 0
+                                if (!videoDuration && annotations.length > 0) {
+                                  const maxTimestamp = Math.max(...annotations.map(a =>
+                                    timestampToSeconds(a.end_timestamp)
+                                  ))
+                                  videoDuration = maxTimestamp * 1.2 // Add 20% buffer as fallback
+                                }
 
-                              const startPercent = (startSeconds / videoDuration) * 100
-                              const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+                                if (!videoDuration) return null
 
-                              return (
-                                <div
-                                  key={index}
-                                  style={{
-                                    position: 'absolute',
-                                    left: `${startPercent}%`,
-                                    width: `${widthPercent}%`,
-                                    height: '100%',
-                                    background: 'rgba(255, 152, 0, 0.7)',
-                                    borderRadius: '2px',
-                                    boxShadow: '0 0 4px rgba(255, 152, 0, 0.8)'
-                                  }}
-                                  title={annotation.notes}
-                                />
-                              )
-                            })}
+                                const startPercent = (startSeconds / videoDuration) * 100
+                                const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                                return (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${startPercent}%`,
+                                      width: `${widthPercent}%`,
+                                      height: '100%',
+                                      background: 'rgba(255, 152, 0, 0.9)',
+                                      cursor: 'pointer'
+                                    }}
+                                    title={`${annotation.start_timestamp} - ${annotation.end_timestamp}: ${annotation.notes}`}
+                                    onClick={() => handleAnnotationClick(annotation)}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    } else if (embedInfo.type === 'youtube' && embedInfo.r2Url && !r2Failed[selectedVideo.id]) {
+                      // YouTube with R2 backup available - try R2 first
+                      return (
+                        <div>
+                          <div style={{ position: 'relative' }}>
+                            <video
+                              ref={videoPlayerRef}
+                              src={embedInfo.r2Url}
+                              controls
+                              style={{
+                                width: '100%',
+                                maxHeight: '500px',
+                                borderRadius: '4px'
+                              }}
+                              onError={() => {
+                                // R2 video not found, fallback to YouTube
+                                setR2Failed(prev => ({ ...prev, [selectedVideo.id]: true }))
+                              }}
+                            >
+                              Your browser does not support the video tag.
+                            </video>
+
+                            {/* Annotation markers overlay */}
+                            <div style={{
+                              position: 'absolute',
+                              bottom: '48px',
+                              left: '0',
+                              right: '0',
+                              height: '6px',
+                              pointerEvents: 'none',
+                              paddingLeft: '12px',
+                              paddingRight: '12px'
+                            }}>
+                              {annotations.map((annotation, index) => {
+                                const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                                const endSeconds = timestampToSeconds(annotation.end_timestamp)
+                                const videoDuration = videoPlayerRef.current?.duration || 0
+
+                                if (!videoDuration) return null
+
+                                const startPercent = (startSeconds / videoDuration) * 100
+                                const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                                return (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${startPercent}%`,
+                                      width: `${widthPercent}%`,
+                                      height: '100%',
+                                      background: 'rgba(255, 152, 0, 0.7)',
+                                      borderRadius: '2px',
+                                      boxShadow: '0 0 4px rgba(255, 152, 0, 0.8)'
+                                    }}
+                                    title={annotation.notes}
+                                  />
+                                )
+                              })}
+                            </div>
+                          </div>
+
+                          {/* Annotation timeline (below video) */}
+                          <div style={{
+                            marginTop: '12px',
+                            padding: '8px',
+                            background: '#1a1a1a',
+                            borderRadius: '4px'
+                          }}>
+                            <div style={{
+                              fontSize: '0.85rem',
+                              color: '#999',
+                              marginBottom: '6px',
+                              fontWeight: '500'
+                            }}>
+                              Annotation Timeline: {selectedVideo.duration ? `(Video Duration: ${Math.floor(selectedVideo.duration / 60)}:${String(selectedVideo.duration % 60).padStart(2, '0')})` : videoPlayerRef.current?.duration ? `(Video Duration: ${Math.floor(videoPlayerRef.current.duration / 60)}:${String(Math.floor(videoPlayerRef.current.duration % 60)).padStart(2, '0')})` : ''}
+                            </div>
+                            <div style={{
+                              position: 'relative',
+                              height: '8px',
+                              background: '#333',
+                              borderRadius: '4px',
+                              overflow: 'hidden'
+                            }}>
+                              {annotations.map((annotation, index) => {
+                                const startSeconds = timestampToSeconds(annotation.start_timestamp)
+                                const endSeconds = timestampToSeconds(annotation.end_timestamp)
+
+                                // Use video duration from player or database
+                                let videoDuration = videoPlayerRef.current?.duration || selectedVideo.duration || 0
+                                if (!videoDuration && annotations.length > 0) {
+                                  const maxTimestamp = Math.max(...annotations.map(a =>
+                                    timestampToSeconds(a.end_timestamp)
+                                  ))
+                                  videoDuration = maxTimestamp * 1.2 // Add 20% buffer as fallback
+                                }
+
+                                if (!videoDuration) return null
+
+                                const startPercent = (startSeconds / videoDuration) * 100
+                                const widthPercent = ((endSeconds - startSeconds) / videoDuration) * 100
+
+                                return (
+                                  <div
+                                    key={index}
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${startPercent}%`,
+                                      width: `${widthPercent}%`,
+                                      height: '100%',
+                                      background: 'rgba(255, 152, 0, 0.9)',
+                                      cursor: 'pointer'
+                                    }}
+                                    title={`${annotation.start_timestamp} - ${annotation.end_timestamp}: ${annotation.notes}`}
+                                    onClick={() => handleAnnotationClick(annotation)}
+                                  />
+                                )
+                              })}
+                            </div>
                           </div>
                         </div>
                       )
                     } else {
-                      // YouTube or Vimeo - use iframe
+                      // YouTube/Vimeo iframe (R2 not available or failed)
                       return (
                         <div>
                           <div style={{ position: 'relative', paddingBottom: '56.25%', height: 0, overflow: 'hidden' }}>
