@@ -41,20 +41,30 @@ const getVideoEmbedInfo = (url, videoId) => {
     }
   }
 
-  // Check if it's a local video file (has video extension and doesn't start with http)
+  // Check if it's a video file (has video extension)
   const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']
-  const isLocalFile = videoExtensions.some(ext => url.toLowerCase().endsWith(ext)) && !url.startsWith('http')
+  const isVideoFile = videoExtensions.some(ext => url.toLowerCase().endsWith(ext))
 
-  if (isLocalFile && videoId) {
-    // Use the backend proxy endpoint for local files
+  // If it's a video filename without http (e.g., "0002_needle_128.mp4"), load from R2 bucket
+  if (isVideoFile && !url.startsWith('http')) {
     return {
       type: 'direct',
-      embedUrl: `/api/serve_video/${videoId}`,
+      embedUrl: `${R2_BUCKET_URL}/${url}`,
+      r2Url: `${R2_BUCKET_URL}/${url}`,
       thumbnailUrl: null
     }
   }
 
-  // Direct video file or other
+  // Direct video file URL (already has http)
+  if (isVideoFile) {
+    return {
+      type: 'direct',
+      embedUrl: url,
+      thumbnailUrl: null
+    }
+  }
+
+  // Other URLs
   return {
     type: 'direct',
     embedUrl: url,
@@ -798,8 +808,6 @@ function App() {
                         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08)',
                         minWidth: '240px',
                         zIndex: 1000,
-                        maxHeight: '320px',
-                        overflowY: 'auto',
                         overflow: 'hidden'
                       }}>
                         <div style={{
@@ -824,7 +832,7 @@ function App() {
                             No annotators found
                           </div>
                         ) : (
-                          <div style={{ padding: '4px 0' }}>
+                          <div className="dropdown-scroll" style={{ padding: '4px 0', maxHeight: '280px', overflowY: 'scroll' }}>
                             {getUniqueAnnotators().map(annotator => (
                               <button
                                 key={annotator}
@@ -919,8 +927,6 @@ function App() {
                         boxShadow: '0 4px 16px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.08)',
                         minWidth: '240px',
                         zIndex: 1000,
-                        maxHeight: '320px',
-                        overflowY: 'auto',
                         overflow: 'hidden'
                       }}>
                         <div style={{
@@ -945,7 +951,7 @@ function App() {
                             No annotators found
                           </div>
                         ) : (
-                          <div style={{ padding: '4px 0' }}>
+                          <div className="dropdown-scroll" style={{ padding: '4px 0', maxHeight: '280px', overflowY: 'scroll' }}>
                             {getUniqueAnnotators().map(annotator => (
                               <button
                                 key={annotator}
