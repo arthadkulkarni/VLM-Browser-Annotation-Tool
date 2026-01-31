@@ -86,7 +86,8 @@ function App() {
   const [annotationData, setAnnotationData] = useState({
     start_timestamp: '00:00:00',
     end_timestamp: '00:00:00',
-    notes: ''
+    notes: '',
+    is_annotated: 'unannotated'
   })
   const [jsonPreview, setJsonPreview] = useState(null)
   const [editingQuery, setEditingQuery] = useState(null)
@@ -95,8 +96,18 @@ function App() {
   const [editAnnotationData, setEditAnnotationData] = useState({
     start_timestamp: '',
     end_timestamp: '',
-    notes: ''
+    notes: '',
+    is_annotated: 'unannotated'
   })
+
+  // Valid query tags
+  const QUERY_TAGS = ['identity', 'static', 'dynamic', 'causal', 'synchronous', 'sequential', 'periodical', 'negative']
+
+  // Track which dropdown is open (for discrete editing)
+  const [openTagDropdown, setOpenTagDropdown] = useState(null) // queryId or null
+  const [openStatusDropdown, setOpenStatusDropdown] = useState(null) // queryId or null
+  const [openAnnotationStatusDropdown, setOpenAnnotationStatusDropdown] = useState(null) // annotationId or null
+
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null)
   const [showAnnotatorDropdown, setShowAnnotatorDropdown] = useState(false)
   const [selectedAnnotatorFilter, setSelectedAnnotatorFilter] = useState(null)
@@ -116,13 +127,23 @@ function App() {
       if (showFilterDropdown && !event.target.closest('.filter-dropdown-container')) {
         setShowFilterDropdown(false)
       }
+      // Close tag/status dropdowns when clicking outside
+      if (openTagDropdown !== null && !event.target.closest('[data-dropdown="tag"]')) {
+        setOpenTagDropdown(null)
+      }
+      if (openStatusDropdown !== null && !event.target.closest('[data-dropdown="status"]')) {
+        setOpenStatusDropdown(null)
+      }
+      if (openAnnotationStatusDropdown !== null && !event.target.closest('[data-dropdown="annotation-status"]')) {
+        setOpenAnnotationStatusDropdown(null)
+      }
     }
 
     document.addEventListener('mousedown', handleClickOutside)
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showAnnotatorDropdown, showFilterDropdown])
+  }, [showAnnotatorDropdown, showFilterDropdown, openTagDropdown, openStatusDropdown, openAnnotationStatusDropdown])
 
   // Auto-play video when entering annotations tab
   useEffect(() => {
@@ -371,7 +392,8 @@ function App() {
       const payload = {
         start_timestamp: annotationData.start_timestamp,
         end_timestamp: annotationData.end_timestamp,
-        notes: annotationData.notes
+        notes: annotationData.notes,
+        is_annotated: annotationData.is_annotated
       }
 
       const response = await fetch(`/api/queries/${selectedQuery.id}/annotations`, {
@@ -386,7 +408,8 @@ function App() {
         setAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: ''
+          notes: '',
+          is_annotated: 'unannotated'
         })
         fetchAnnotations(selectedQuery.id)
       }
@@ -400,7 +423,8 @@ function App() {
     setEditAnnotationData({
       start_timestamp: annotation.start_timestamp || '00:00:00',
       end_timestamp: annotation.end_timestamp || '00:00:00',
-      notes: annotation.notes || ''
+      notes: annotation.notes || '',
+      is_annotated: annotation.is_annotated || 'unannotated'
     })
   }
 
@@ -426,7 +450,8 @@ function App() {
         setEditAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: ''
+          notes: '',
+          is_annotated: 'unannotated'
         })
         fetchAnnotations(selectedQuery.id)
       } else {
@@ -443,7 +468,8 @@ function App() {
     setEditAnnotationData({
       start_timestamp: '00:00:00',
       end_timestamp: '00:00:00',
-      notes: ''
+      notes: '',
+      is_annotated: 'unannotated'
     })
   }
 
@@ -465,8 +491,39 @@ function App() {
     }
   }
 
-  const handleMarkQueryFinished = async () => {
+  const handleUpdateAnnotationStatus = async (annotationId, newStatus) => {
+    try {
+      const response = await fetch(`/api/annotations/${annotationId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ is_annotated: newStatus }),
+      })
+
+      if (response.ok && selectedQuery) {
+        fetchAnnotations(selectedQuery.id)
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to update annotation status: ${errorData.message || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error updating annotation status:', error)
+      alert(`Error: ${error.message}`)
+    }
+  }
+
+  const handleMarkQueryVerified = async () => {
     if (!selectedQuery) return
+
+    // Check if all annotations are marked as "annotated"
+    const unannotatedCount = annotations.filter(a => a.is_annotated !== 'annotated').length
+    if (unannotatedCount > 0) {
+      const confirmed = window.confirm(
+        `${unannotatedCount} annotation${unannotatedCount > 1 ? 's are' : ' is'} still marked as "unannotated".\n\nAre you sure you want to verify this query?`
+      )
+      if (!confirmed) return
+    }
 
     try {
       const response = await fetch(`/api/queries/${selectedQuery.id}/status`, {
@@ -474,7 +531,7 @@ function App() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ status: 'finished' }),
+        body: JSON.stringify({ status: 'verified' }),
       })
 
       if (response.ok) {
@@ -485,10 +542,79 @@ function App() {
         fetchQueries(selectedVideo.id)
       } else {
         const errorData = await response.json()
-        alert(`Failed to mark query as finished: ${errorData.message || 'Unknown error'}`)
+        alert(`Failed to mark query as verified: ${errorData.message || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error marking query as finished:', error)
+      console.error('Error marking query as verified:', error)
+      alert(`Error: ${error.message}`)
+    }
+  }
+
+  // Sort annotations: unannotated first, then annotated
+  const getSortedAnnotations = () => {
+    return [...annotations].sort((a, b) => {
+      const aAnnotated = a.is_annotated === 'annotated' ? 1 : 0
+      const bAnnotated = b.is_annotated === 'annotated' ? 1 : 0
+      return aAnnotated - bAnnotated
+    })
+  }
+
+  const handleUpdateQueryTag = async (queryId, newTag) => {
+    try {
+      const response = await fetch(`/api/queries/${queryId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ tag: newTag }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update selectedQuery if it's the one being edited
+        if (selectedQuery && selectedQuery.id === queryId) {
+          setSelectedQuery(data.query)
+        }
+        // Refresh queries list
+        if (selectedVideo) {
+          fetchQueries(selectedVideo.id)
+        }
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to update query tag: ${errorData.message || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error updating query tag:', error)
+      alert(`Error: ${error.message}`)
+    }
+  }
+
+  const handleUpdateQueryStatus = async (queryId, newStatus) => {
+    try {
+      const response = await fetch(`/api/queries/${queryId}/status`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        // Update selectedQuery if it's the one being edited
+        if (selectedQuery && selectedQuery.id === queryId) {
+          setSelectedQuery(data.query)
+        }
+        // Refresh queries list
+        if (selectedVideo) {
+          fetchQueries(selectedVideo.id)
+        }
+      } else {
+        const errorData = await response.json()
+        alert(`Failed to update query status: ${errorData.message || 'Unknown error'}`)
+      }
+    } catch (error) {
+      console.error('Error updating query status:', error)
       alert(`Error: ${error.message}`)
     }
   }
@@ -595,10 +721,12 @@ function App() {
               return {
                 query_text: query.query_text,
                 status: query.status,
+                tag: query.tag,
                 annotations: (annotationsData.annotations || []).map(annotation => ({
                   start_timestamp: annotation.start_timestamp,
                   end_timestamp: annotation.end_timestamp,
-                  notes: annotation.notes
+                  notes: annotation.notes,
+                  is_annotated: annotation.is_annotated
                 }))
               }
             })
@@ -1141,21 +1269,130 @@ function App() {
                       ) : (
                         <>
                           <div className="query-content">
-                            <p>
+                            <p style={{ marginBottom: '8px' }}>
                               {query.query_text}
-                              <span style={{
-                                marginLeft: '10px',
-                                padding: '3px 10px',
-                                borderRadius: '10px',
-                                fontSize: '0.7rem',
-                                fontWeight: '600',
-                                textTransform: 'uppercase',
-                                background: query.status === 'finished' ? '#4CAF50' : '#FF9800',
-                                color: 'white'
-                              }}>
-                                {query.status || 'pending'}
-                              </span>
                             </p>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              {/* Tag Badge - Click to edit */}
+                              <div data-dropdown="tag" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  onClick={() => setOpenTagDropdown(openTagDropdown === query.id ? null : query.id)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    background: '#2196F3',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    display: 'inline-block'
+                                  }}
+                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
+                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
+                                >
+                                  {query.tag || 'negative'}
+                                </span>
+                                {openTagDropdown === query.id && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    marginTop: '4px',
+                                    background: 'white',
+                                    border: '1px solid #e0e0e0',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    minWidth: '120px',
+                                    overflow: 'hidden'
+                                  }}>
+                                    {QUERY_TAGS.map(tag => (
+                                      <div
+                                        key={tag}
+                                        onClick={() => {
+                                          handleUpdateQueryTag(query.id, tag)
+                                          setOpenTagDropdown(null)
+                                        }}
+                                        style={{
+                                          padding: '8px 12px',
+                                          fontSize: '0.8rem',
+                                          cursor: 'pointer',
+                                          background: query.tag === tag ? '#e3f2fd' : 'white',
+                                          fontWeight: query.tag === tag ? '600' : '400',
+                                          transition: 'background 0.1s ease'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
+                                        onMouseLeave={(e) => e.target.style.background = query.tag === tag ? '#e3f2fd' : 'white'}
+                                      >
+                                        {tag}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Status Badge - Click to edit */}
+                              <div data-dropdown="status" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  onClick={() => setOpenStatusDropdown(openStatusDropdown === query.id ? null : query.id)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    background: query.status === 'verified' ? '#4CAF50' : '#FF9800',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    display: 'inline-block'
+                                  }}
+                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
+                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
+                                >
+                                  {query.status || 'unverified'}
+                                </span>
+                                {openStatusDropdown === query.id && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    marginTop: '4px',
+                                    background: 'white',
+                                    border: '1px solid #e0e0e0',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    minWidth: '110px',
+                                    overflow: 'hidden'
+                                  }}>
+                                    {['unverified', 'verified'].map(status => (
+                                      <div
+                                        key={status}
+                                        onClick={() => {
+                                          handleUpdateQueryStatus(query.id, status)
+                                          setOpenStatusDropdown(null)
+                                        }}
+                                        style={{
+                                          padding: '8px 12px',
+                                          fontSize: '0.8rem',
+                                          cursor: 'pointer',
+                                          background: query.status === status ? (status === 'verified' ? '#e8f5e9' : '#fff3e0') : 'white',
+                                          fontWeight: query.status === status ? '600' : '400',
+                                          transition: 'background 0.1s ease'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
+                                        onMouseLeave={(e) => e.target.style.background = query.status === status ? (status === 'verified' ? '#e8f5e9' : '#fff3e0') : 'white'}
+                                      >
+                                        {status}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                             <span className="query-date">
                               {new Date(query.created_at).toLocaleString()}
                             </span>
@@ -1208,10 +1445,22 @@ function App() {
                     fontSize: '0.75rem',
                     fontWeight: '600',
                     textTransform: 'uppercase',
-                    background: selectedQuery.status === 'finished' ? '#4CAF50' : '#FF9800',
+                    background: selectedQuery.status === 'verified' ? '#4CAF50' : '#FF9800',
                     color: 'white'
                   }}>
-                    {selectedQuery.status || 'pending'}
+                    {selectedQuery.status || 'unverified'}
+                  </span>
+                  <span style={{
+                    marginLeft: '8px',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    background: '#2196F3',
+                    color: 'white'
+                  }}>
+                    {selectedQuery.tag || 'negative'}
                   </span>
                 </h2>
               </div>
@@ -1593,6 +1842,19 @@ function App() {
                   />
                 </div>
 
+                <div className="form-group">
+                  <label htmlFor="is_annotated">Annotation Status:</label>
+                  <select
+                    id="is_annotated"
+                    value={annotationData.is_annotated}
+                    onChange={(e) => setAnnotationData({...annotationData, is_annotated: e.target.value})}
+                    style={{ width: '100%', padding: '8px' }}
+                  >
+                    <option value="unannotated">unannotated</option>
+                    <option value="annotated">annotated</option>
+                  </select>
+                </div>
+
                 <button type="submit">Add Annotation</button>
               </form>
 
@@ -1601,7 +1863,7 @@ function App() {
                 {annotations.length === 0 ? (
                   <p className="no-annotations">No annotations yet. Add one above!</p>
                 ) : (
-                  annotations.map((annotation) => (
+                  getSortedAnnotations().map((annotation) => (
                     <div
                       key={annotation.id}
                       className="annotation-item"
@@ -1647,6 +1909,17 @@ function App() {
                               style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
                             />
                           </div>
+                          <div className="form-group">
+                            <label>Status:</label>
+                            <select
+                              value={editAnnotationData.is_annotated || 'unannotated'}
+                              onChange={(e) => setEditAnnotationData({...editAnnotationData, is_annotated: e.target.value})}
+                              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
+                            >
+                              <option value="unannotated">unannotated</option>
+                              <option value="annotated">annotated</option>
+                            </select>
+                          </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                               className="save-btn"
@@ -1675,6 +1948,67 @@ function App() {
                             {annotation.notes && (
                               <p><strong>Description:</strong> {annotation.notes}</p>
                             )}
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
+                              {/* Annotation Status Badge - Click to edit */}
+                              <div data-dropdown="annotation-status" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  onClick={() => setOpenAnnotationStatusDropdown(openAnnotationStatusDropdown === annotation.id ? null : annotation.id)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    background: annotation.is_annotated === 'annotated' ? '#4CAF50' : '#9e9e9e',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    display: 'inline-block'
+                                  }}
+                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
+                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
+                                >
+                                  {annotation.is_annotated || 'unannotated'}
+                                </span>
+                                {openAnnotationStatusDropdown === annotation.id && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    marginTop: '4px',
+                                    background: 'white',
+                                    border: '1px solid #e0e0e0',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    minWidth: '120px',
+                                    overflow: 'hidden'
+                                  }}>
+                                    {['unannotated', 'annotated'].map(status => (
+                                      <div
+                                        key={status}
+                                        onClick={() => {
+                                          handleUpdateAnnotationStatus(annotation.id, status)
+                                          setOpenAnnotationStatusDropdown(null)
+                                        }}
+                                        style={{
+                                          padding: '8px 12px',
+                                          fontSize: '0.8rem',
+                                          cursor: 'pointer',
+                                          background: annotation.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white',
+                                          fontWeight: annotation.is_annotated === status ? '600' : '400',
+                                          transition: 'background 0.1s ease'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
+                                        onMouseLeave={(e) => e.target.style.background = annotation.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white'}
+                                      >
+                                        {status}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
                             <span className="annotation-date">
                               {new Date(annotation.created_at).toLocaleString()}
                             </span>
@@ -1708,19 +2042,19 @@ function App() {
               <div style={{
                 marginTop: '2rem',
                 padding: '1.5rem',
-                background: selectedQuery.status === 'finished' ? '#E8F5E9' : '#FFF3E0',
+                background: selectedQuery.status === 'verified' ? '#E8F5E9' : '#FFF3E0',
                 borderRadius: '8px',
-                border: `2px solid ${selectedQuery.status === 'finished' ? '#4CAF50' : '#FF9800'}`
+                border: `2px solid ${selectedQuery.status === 'verified' ? '#4CAF50' : '#FF9800'}`
               }}>
                 <h3 style={{
                   marginTop: 0,
                   marginBottom: '1rem',
-                  color: selectedQuery.status === 'finished' ? '#2E7D32' : '#E65100'
+                  color: selectedQuery.status === 'verified' ? '#2E7D32' : '#E65100'
                 }}>
-                  {selectedQuery.status === 'finished' ? 'Query Completed' : 'Confirm Annotations'}
+                  {selectedQuery.status === 'verified' ? 'Query Verified' : 'Confirm Annotations'}
                 </h3>
 
-                {selectedQuery.status === 'finished' ? (
+                {selectedQuery.status === 'verified' ? (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1732,7 +2066,7 @@ function App() {
                       <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     </svg>
                     <span style={{ fontSize: '1rem', fontWeight: '500' }}>
-                      This query has been marked as finished. All annotations are confirmed.
+                      This query has been verified. All annotations are confirmed as correct.
                     </span>
                   </div>
                 ) : (
@@ -1742,10 +2076,10 @@ function App() {
                       marginBottom: '1rem',
                       color: '#5D4037'
                     }}>
-                      Review all annotations above. Once you've confirmed they are correct, click the button below to mark this query as finished.
+                      Review all annotations above. Once you've confirmed they are correct, click the button below to mark this query as verified.
                     </p>
                     <button
-                      onClick={handleMarkQueryFinished}
+                      onClick={handleMarkQueryVerified}
                       style={{
                         background: '#4CAF50',
                         color: 'white',
@@ -1766,7 +2100,7 @@ function App() {
                         e.target.style.transform = 'translateY(0)'
                       }}
                     >
-                      ✓ Confirm & Mark Query as Finished
+                      ✓ Confirm & Mark Query as Verified
                     </button>
                   </>
                 )}

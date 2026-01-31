@@ -240,10 +240,16 @@ def submit_video_url():
                     # Use existing query
                     query = existing_query
                 else:
+                    # Get optional tag from query data, default to 'negative'
+                    query_tag = query_item.get('tag', 'negative')
+                    if query_tag not in Query.VALID_TAGS:
+                        query_tag = 'negative'  # Invalid tag, set to default
+
                     # Create new query
                     query = Query(
                         video_id=video.id,
-                        query_text=query_text
+                        query_text=query_text,
+                        tag=query_tag
                     )
                     db.session.add(query)
                     db.session.flush()  # Get query ID before processing annotations
@@ -252,12 +258,18 @@ def submit_video_url():
                 # Process annotations (always add new annotations, even for existing queries)
                 annotations_data = query_item.get('annotations', [])
                 for annotation_item in annotations_data:
+                    # Get optional is_annotated from annotation data
+                    is_annotated = annotation_item.get('is_annotated', 'unannotated')
+                    if is_annotated not in ['annotated', 'unannotated']:
+                        is_annotated = 'unannotated'
+
                     # Notes are optional - create annotation as long as we have timestamp data
                     annotation = Annotation(
                         query_id=query.id,
                         start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                         end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                        notes=annotation_item.get('notes', '')
+                        notes=annotation_item.get('notes', ''),
+                        is_annotated=is_annotated
                     )
                     db.session.add(annotation)
                     created_annotations.append(annotation_item)
@@ -465,10 +477,16 @@ def submit_multiple_videos():
                         # Use existing query
                         query = existing_query
                     else:
+                        # Get optional tag from query data, default to 'negative'
+                        query_tag = query_item.get('tag', 'negative')
+                        if query_tag not in Query.VALID_TAGS:
+                            query_tag = 'negative'  # Invalid tag, set to default
+
                         # Create new query
                         query = Query(
                             video_id=video.id,
-                            query_text=query_text
+                            query_text=query_text,
+                            tag=query_tag
                         )
                         db.session.add(query)
                         db.session.flush()  # Get query ID before processing annotations
@@ -477,12 +495,18 @@ def submit_multiple_videos():
                     # Process annotations (always add new annotations, even for existing queries)
                     annotations_data = query_item.get('annotations', [])
                     for annotation_item in annotations_data:
+                        # Get optional is_annotated from annotation data
+                        is_annotated = annotation_item.get('is_annotated', 'unannotated')
+                        if is_annotated not in ['annotated', 'unannotated']:
+                            is_annotated = 'unannotated'
+
                         # Notes are optional - create annotation as long as we have timestamp data
                         annotation = Annotation(
                             query_id=query.id,
                             start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                             end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                            notes=annotation_item.get('notes', '')
+                            notes=annotation_item.get('notes', ''),
+                            is_annotated=is_annotated
                         )
                         db.session.add(annotation)
                         created_annotations.append(annotation_item)
@@ -720,8 +744,16 @@ def create_query(video_id):
                 'message': 'Query text cannot be empty'
             }), 400
 
+        # Validate tag if provided, default to 'negative'
+        tag = data.get('tag', 'negative')
+        if tag not in Query.VALID_TAGS:
+            return jsonify({
+                'error': 'Invalid tag',
+                'message': f'Tag must be one of: {", ".join(Query.VALID_TAGS)}'
+            }), 400
+
         # Create new query
-        query = Query(video_id=video_id, query_text=query_text)
+        query = Query(video_id=video_id, query_text=query_text, tag=tag)
         db.session.add(query)
         db.session.commit()
 
@@ -788,6 +820,16 @@ def update_query(query_id):
                 }), 400
             query.query_text = data['query_text']
 
+        # Update tag if provided
+        if 'tag' in data:
+            tag = data['tag']
+            if tag is not None and tag not in Query.VALID_TAGS:
+                return jsonify({
+                    'error': 'Invalid tag',
+                    'message': f'Tag must be one of: {", ".join(Query.VALID_TAGS)}'
+                }), 400
+            query.tag = tag
+
         db.session.commit()
 
         return jsonify({
@@ -834,7 +876,7 @@ def delete_query(query_id):
 def update_video_status(video_id):
     """
     Helper function to update video status based on its queries.
-    Video is 'finished' only if it has queries AND all queries are 'finished'.
+    Video is 'finished' only if it has queries AND all queries are 'verified'.
     Otherwise, it's 'pending'.
     """
     try:
@@ -849,9 +891,9 @@ def update_video_status(video_id):
         if not queries:
             video.status = 'pending'
         else:
-            # Check if all queries are finished
-            all_finished = all(query.status == 'finished' for query in queries)
-            video.status = 'finished' if all_finished else 'pending'
+            # Check if all queries are verified
+            all_verified = all(query.status == 'verified' for query in queries)
+            video.status = 'finished' if all_verified else 'pending'
 
         db.session.commit()
         return True
@@ -863,7 +905,7 @@ def update_video_status(video_id):
 
 @app.route('/api/queries/<int:query_id>/status', methods=['PUT'])
 def update_query_status(query_id):
-    """Update the status of a specific query (pending or finished)"""
+    """Update the status of a specific query (verified or unverified)"""
     try:
         query = db.session.get(Query, query_id)
         if not query:
@@ -883,10 +925,10 @@ def update_query_status(query_id):
         status = data['status']
 
         # Validate status value
-        if status not in ['pending', 'finished']:
+        if status not in ['verified', 'unverified']:
             return jsonify({
                 'error': 'Invalid status',
-                'message': 'Status must be either "pending" or "finished"'
+                'message': 'Status must be either "verified" or "unverified"'
             }), 400
 
         query.status = status
@@ -924,12 +966,21 @@ def create_annotation(query_id):
 
         data = request.get_json()
 
+        # Validate is_annotated if provided
+        is_annotated = data.get('is_annotated', 'unannotated')
+        if is_annotated not in ['annotated', 'unannotated']:
+            return jsonify({
+                'error': 'Invalid is_annotated value',
+                'message': 'is_annotated must be either "annotated" or "unannotated"'
+            }), 400
+
         # Create new annotation (notes are optional)
         annotation = Annotation(
             query_id=query_id,
             start_timestamp=data.get('start_timestamp', '00:00:00'),
             end_timestamp=data.get('end_timestamp', '00:00:00'),
-            notes=data.get('notes', '')
+            notes=data.get('notes', ''),
+            is_annotated=is_annotated
         )
         db.session.add(annotation)
         db.session.commit()
@@ -1025,6 +1076,14 @@ def update_annotation(annotation_id):
             annotation.end_timestamp = data['end_timestamp']
         if 'notes' in data:
             annotation.notes = data['notes']
+        if 'is_annotated' in data:
+            is_annotated = data['is_annotated']
+            if is_annotated not in ['annotated', 'unannotated']:
+                return jsonify({
+                    'error': 'Invalid is_annotated value',
+                    'message': 'is_annotated must be either "annotated" or "unannotated"'
+                }), 400
+            annotation.is_annotated = is_annotated
 
         db.session.commit()
 
