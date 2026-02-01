@@ -240,16 +240,24 @@ def submit_video_url():
                     # Use existing query
                     query = existing_query
                 else:
-                    # Get optional tag from query data, default to 'negative'
-                    query_tag = query_item.get('tag', 'negative')
-                    if query_tag not in Query.VALID_TAGS:
-                        query_tag = 'negative'  # Invalid tag, set to default
+                    # query_type is mandatory for new queries
+                    query_type = query_item.get('query_type')
+                    if not query_type:
+                        return jsonify({
+                            'error': 'Missing query_type',
+                            'message': f'Query "{query_text[:50]}..." is missing a required "query_type" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                        }), 400
+                    if query_type not in Query.VALID_QUERY_TYPES:
+                        return jsonify({
+                            'error': 'Invalid query_type',
+                            'message': f'Query "{query_text[:50]}..." has invalid query_type "{query_type}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                        }), 400
 
                     # Create new query
                     query = Query(
                         video_id=video.id,
                         query_text=query_text,
-                        tag=query_tag
+                        query_type=query_type
                     )
                     db.session.add(query)
                     db.session.flush()  # Get query ID before processing annotations
@@ -477,16 +485,24 @@ def submit_multiple_videos():
                         # Use existing query
                         query = existing_query
                     else:
-                        # Get optional tag from query data, default to 'negative'
-                        query_tag = query_item.get('tag', 'negative')
-                        if query_tag not in Query.VALID_TAGS:
-                            query_tag = 'negative'  # Invalid tag, set to default
+                        # query_type is mandatory for new queries
+                        query_type = query_item.get('query_type')
+                        if not query_type:
+                            return jsonify({
+                                'error': 'Missing query_type',
+                                'message': f'Query "{query_text[:50]}..." at video index {idx} is missing a required "query_type" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                            }), 400
+                        if query_type not in Query.VALID_QUERY_TYPES:
+                            return jsonify({
+                                'error': 'Invalid query_type',
+                                'message': f'Query "{query_text[:50]}..." at video index {idx} has invalid query_type "{query_type}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                            }), 400
 
                         # Create new query
                         query = Query(
                             video_id=video.id,
                             query_text=query_text,
-                            tag=query_tag
+                            query_type=query_type
                         )
                         db.session.add(query)
                         db.session.flush()  # Get query ID before processing annotations
@@ -744,16 +760,16 @@ def create_query(video_id):
                 'message': 'Query text cannot be empty'
             }), 400
 
-        # Validate tag if provided, default to 'negative'
-        tag = data.get('tag', 'negative')
-        if tag not in Query.VALID_TAGS:
+        # Validate query_type if provided, default to 'negative'
+        query_type = data.get('query_type', 'negative')
+        if query_type not in Query.VALID_QUERY_TYPES:
             return jsonify({
-                'error': 'Invalid tag',
-                'message': f'Tag must be one of: {", ".join(Query.VALID_TAGS)}'
+                'error': 'Invalid query_type',
+                'message': f'query_type must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
             }), 400
 
         # Create new query
-        query = Query(video_id=video_id, query_text=query_text, tag=tag)
+        query = Query(video_id=video_id, query_text=query_text, query_type=query_type)
         db.session.add(query)
         db.session.commit()
 
@@ -820,15 +836,15 @@ def update_query(query_id):
                 }), 400
             query.query_text = data['query_text']
 
-        # Update tag if provided
-        if 'tag' in data:
-            tag = data['tag']
-            if tag is not None and tag not in Query.VALID_TAGS:
+        # Update query_type if provided
+        if 'query_type' in data:
+            query_type = data['query_type']
+            if query_type is not None and query_type not in Query.VALID_QUERY_TYPES:
                 return jsonify({
-                    'error': 'Invalid tag',
-                    'message': f'Tag must be one of: {", ".join(Query.VALID_TAGS)}'
+                    'error': 'Invalid query_type',
+                    'message': f'query_type must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
                 }), 400
-            query.tag = tag
+            query.query_type = query_type
 
         db.session.commit()
 

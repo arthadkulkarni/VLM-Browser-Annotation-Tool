@@ -46,14 +46,14 @@ class Query(db.Model):
     """Model for storing queries related to videos"""
     __tablename__ = 'queries'
 
-    # Valid query tag categories
-    VALID_TAGS = ['identity', 'static', 'dynamic', 'causal', 'synchronous', 'sequential', 'periodical', 'negative']
+    # Valid query type categories
+    VALID_QUERY_TYPES = ['identity', 'static', 'dynamic', 'causal', 'synchronous', 'sequential', 'periodical', 'negative']
 
     id = db.Column(db.Integer, primary_key=True)
     video_id = db.Column(db.Integer, db.ForeignKey('videos.id'), nullable=False)
     query_text = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(50), default='unverified')  # verified or unverified
-    tag = db.Column(db.String(50), default='negative')  # Query category tag
+    query_type = db.Column(db.String(50), default='negative')  # Query category type
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -67,7 +67,7 @@ class Query(db.Model):
             'video_id': self.video_id,
             'query_text': self.query_text,
             'status': self.status,
-            'tag': self.tag,
+            'query_type': self.query_type,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

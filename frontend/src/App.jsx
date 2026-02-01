@@ -100,11 +100,11 @@ function App() {
     is_annotated: 'unannotated'
   })
 
-  // Valid query tags
-  const QUERY_TAGS = ['identity', 'static', 'dynamic', 'causal', 'synchronous', 'sequential', 'periodical', 'negative']
+  // Valid query types
+  const QUERY_TYPES = ['identity', 'static', 'dynamic', 'causal', 'synchronous', 'sequential', 'periodical', 'negative']
 
   // Track which dropdown is open (for discrete editing)
-  const [openTagDropdown, setOpenTagDropdown] = useState(null) // queryId or null
+  const [openQueryTypeDropdown, setOpenQueryTypeDropdown] = useState(null) // queryId or null
   const [openStatusDropdown, setOpenStatusDropdown] = useState(null) // queryId or null
   const [openAnnotationStatusDropdown, setOpenAnnotationStatusDropdown] = useState(null) // annotationId or null
 
@@ -127,9 +127,9 @@ function App() {
       if (showFilterDropdown && !event.target.closest('.filter-dropdown-container')) {
         setShowFilterDropdown(false)
       }
-      // Close tag/status dropdowns when clicking outside
-      if (openTagDropdown !== null && !event.target.closest('[data-dropdown="tag"]')) {
-        setOpenTagDropdown(null)
+      // Close query_type/status dropdowns when clicking outside
+      if (openQueryTypeDropdown !== null && !event.target.closest('[data-dropdown="query_type"]')) {
+        setOpenQueryTypeDropdown(null)
       }
       if (openStatusDropdown !== null && !event.target.closest('[data-dropdown="status"]')) {
         setOpenStatusDropdown(null)
@@ -143,7 +143,7 @@ function App() {
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
     }
-  }, [showAnnotatorDropdown, showFilterDropdown, openTagDropdown, openStatusDropdown, openAnnotationStatusDropdown])
+  }, [showAnnotatorDropdown, showFilterDropdown, openQueryTypeDropdown, openStatusDropdown, openAnnotationStatusDropdown])
 
   // Auto-play video when entering annotations tab
   useEffect(() => {
@@ -559,14 +559,14 @@ function App() {
     })
   }
 
-  const handleUpdateQueryTag = async (queryId, newTag) => {
+  const handleUpdateQueryType = async (queryId, newQueryType) => {
     try {
       const response = await fetch(`/api/queries/${queryId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ tag: newTag }),
+        body: JSON.stringify({ query_type: newQueryType }),
       })
 
       if (response.ok) {
@@ -581,10 +581,10 @@ function App() {
         }
       } else {
         const errorData = await response.json()
-        alert(`Failed to update query tag: ${errorData.message || 'Unknown error'}`)
+        alert(`Failed to update query type: ${errorData.message || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error updating query tag:', error)
+      console.error('Error updating query type:', error)
       alert(`Error: ${error.message}`)
     }
   }
@@ -721,7 +721,7 @@ function App() {
               return {
                 query_text: query.query_text,
                 status: query.status,
-                tag: query.tag,
+                query_type: query.query_type,
                 annotations: (annotationsData.annotations || []).map(annotation => ({
                   start_timestamp: annotation.start_timestamp,
                   end_timestamp: annotation.end_timestamp,
@@ -866,11 +866,13 @@ function App() {
   "queries": [
     {
       "query_text": "Your query text here",
+      "query_type": "identity",
       "annotations": [
         {
           "start_timestamp": "00:00:00",
           "end_timestamp": "00:00:05",
-          "notes": "Description of what happens"
+          "notes": "Description of what happens",
+          "is_annotated": "unannotated"
         }
       ]
     }
@@ -884,8 +886,9 @@ function App() {
                     <li><code>title</code>: Video title</li>
                     <li><code>annotator</code>: Name of the person assigned to annotate this video</li>
                     <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
+                    <li><code>query_type</code>: Query category (identity, static, dynamic, causal, synchronous, sequential, periodical, negative)</li>
                   </ul>
-                  <strong>Optional fields:</strong> description, topic, queries, annotations
+                  <strong>Optional fields:</strong> description, topic, annotations, is_annotated
                 </div>
               </div>
             </div>
@@ -1273,10 +1276,10 @@ function App() {
                               {query.query_text}
                             </p>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              {/* Tag Badge - Click to edit */}
-                              <div data-dropdown="tag" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                              {/* Query Type Badge - Click to edit */}
+                              <div data-dropdown="query_type" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
                                 <span
-                                  onClick={() => setOpenTagDropdown(openTagDropdown === query.id ? null : query.id)}
+                                  onClick={() => setOpenQueryTypeDropdown(openQueryTypeDropdown === query.id ? null : query.id)}
                                   style={{
                                     padding: '4px 10px',
                                     borderRadius: '12px',
@@ -1292,9 +1295,9 @@ function App() {
                                   onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
                                   onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
                                 >
-                                  {query.tag || 'negative'}
+                                  {query.query_type || 'negative'}
                                 </span>
-                                {openTagDropdown === query.id && (
+                                {openQueryTypeDropdown === query.id && (
                                   <div style={{
                                     position: 'absolute',
                                     top: '100%',
@@ -1308,25 +1311,25 @@ function App() {
                                     minWidth: '120px',
                                     overflow: 'hidden'
                                   }}>
-                                    {QUERY_TAGS.map(tag => (
+                                    {QUERY_TYPES.map(qType => (
                                       <div
-                                        key={tag}
+                                        key={qType}
                                         onClick={() => {
-                                          handleUpdateQueryTag(query.id, tag)
-                                          setOpenTagDropdown(null)
+                                          handleUpdateQueryType(query.id, qType)
+                                          setOpenQueryTypeDropdown(null)
                                         }}
                                         style={{
                                           padding: '8px 12px',
                                           fontSize: '0.8rem',
                                           cursor: 'pointer',
-                                          background: query.tag === tag ? '#e3f2fd' : 'white',
-                                          fontWeight: query.tag === tag ? '600' : '400',
+                                          background: query.query_type === qType ? '#e3f2fd' : 'white',
+                                          fontWeight: query.query_type === qType ? '600' : '400',
                                           transition: 'background 0.1s ease'
                                         }}
                                         onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
-                                        onMouseLeave={(e) => e.target.style.background = query.tag === tag ? '#e3f2fd' : 'white'}
+                                        onMouseLeave={(e) => e.target.style.background = query.query_type === qType ? '#e3f2fd' : 'white'}
                                       >
-                                        {tag}
+                                        {qType}
                                       </div>
                                     ))}
                                   </div>
@@ -1460,7 +1463,7 @@ function App() {
                     background: '#2196F3',
                     color: 'white'
                   }}>
-                    {selectedQuery.tag || 'negative'}
+                    {selectedQuery.query_type || 'negative'}
                   </span>
                 </h2>
               </div>
