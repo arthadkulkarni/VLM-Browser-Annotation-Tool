@@ -240,25 +240,32 @@ def submit_video_url():
                     # Use existing query
                     query = existing_query
                 else:
-                    # query_type is mandatory for new queries
-                    query_type = query_item.get('query_type')
-                    if not query_type:
+                    # query_types is mandatory for new queries (supports array or single value for backward compatibility)
+                    query_types = query_item.get('query_types') or query_item.get('query_type')
+                    if not query_types:
                         return jsonify({
-                            'error': 'Missing query_type',
-                            'message': f'Query "{query_text[:50]}..." is missing a required "query_type" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                            'error': 'Missing query_types',
+                            'message': f'Query "{query_text[:50]}..." is missing a required "query_types" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
                         }), 400
-                    if query_type not in Query.VALID_QUERY_TYPES:
-                        return jsonify({
-                            'error': 'Invalid query_type',
-                            'message': f'Query "{query_text[:50]}..." has invalid query_type "{query_type}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
-                        }), 400
+
+                    # Convert single value to list if needed
+                    if isinstance(query_types, str):
+                        query_types = [query_types]
+
+                    # Validate all query types
+                    for qt in query_types:
+                        if qt not in Query.VALID_QUERY_TYPES:
+                            return jsonify({
+                                'error': 'Invalid query_type',
+                                'message': f'Query "{query_text[:50]}..." has invalid query_type "{qt}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                            }), 400
 
                     # Create new query
                     query = Query(
                         video_id=video.id,
-                        query_text=query_text,
-                        query_type=query_type
+                        query_text=query_text
                     )
+                    query.set_query_types(query_types)
                     db.session.add(query)
                     db.session.flush()  # Get query ID before processing annotations
                     created_queries.append(query.to_dict())
@@ -485,25 +492,32 @@ def submit_multiple_videos():
                         # Use existing query
                         query = existing_query
                     else:
-                        # query_type is mandatory for new queries
-                        query_type = query_item.get('query_type')
-                        if not query_type:
+                        # query_types is mandatory for new queries (supports array or single value for backward compatibility)
+                        query_types = query_item.get('query_types') or query_item.get('query_type')
+                        if not query_types:
                             return jsonify({
-                                'error': 'Missing query_type',
-                                'message': f'Query "{query_text[:50]}..." at video index {idx} is missing a required "query_type" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                                'error': 'Missing query_types',
+                                'message': f'Query "{query_text[:50]}..." at video index {idx} is missing a required "query_types" field. Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
                             }), 400
-                        if query_type not in Query.VALID_QUERY_TYPES:
-                            return jsonify({
-                                'error': 'Invalid query_type',
-                                'message': f'Query "{query_text[:50]}..." at video index {idx} has invalid query_type "{query_type}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
-                            }), 400
+
+                        # Convert single value to list if needed
+                        if isinstance(query_types, str):
+                            query_types = [query_types]
+
+                        # Validate all query types
+                        for qt in query_types:
+                            if qt not in Query.VALID_QUERY_TYPES:
+                                return jsonify({
+                                    'error': 'Invalid query_type',
+                                    'message': f'Query "{query_text[:50]}..." at video index {idx} has invalid query_type "{qt}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
+                                }), 400
 
                         # Create new query
                         query = Query(
                             video_id=video.id,
-                            query_text=query_text,
-                            query_type=query_type
+                            query_text=query_text
                         )
+                        query.set_query_types(query_types)
                         db.session.add(query)
                         db.session.flush()  # Get query ID before processing annotations
                         created_queries.append(query.to_dict())
@@ -760,16 +774,20 @@ def create_query(video_id):
                 'message': 'Query text cannot be empty'
             }), 400
 
-        # Validate query_type if provided, default to 'negative'
-        query_type = data.get('query_type', 'negative')
-        if query_type not in Query.VALID_QUERY_TYPES:
-            return jsonify({
-                'error': 'Invalid query_type',
-                'message': f'query_type must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
-            }), 400
+        # Validate query_types if provided, default to ['negative']
+        query_types = data.get('query_types') or data.get('query_type', ['negative'])
+        if isinstance(query_types, str):
+            query_types = [query_types]
+        for qt in query_types:
+            if qt not in Query.VALID_QUERY_TYPES:
+                return jsonify({
+                    'error': 'Invalid query_type',
+                    'message': f'query_type "{qt}" must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
+                }), 400
 
         # Create new query
-        query = Query(video_id=video_id, query_text=query_text, query_type=query_type)
+        query = Query(video_id=video_id, query_text=query_text)
+        query.set_query_types(query_types)
         db.session.add(query)
         db.session.commit()
 
@@ -836,15 +854,19 @@ def update_query(query_id):
                 }), 400
             query.query_text = data['query_text']
 
-        # Update query_type if provided
-        if 'query_type' in data:
-            query_type = data['query_type']
-            if query_type is not None and query_type not in Query.VALID_QUERY_TYPES:
-                return jsonify({
-                    'error': 'Invalid query_type',
-                    'message': f'query_type must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
-                }), 400
-            query.query_type = query_type
+        # Update query_types if provided (supports both 'query_types' array and 'query_type' single value)
+        if 'query_types' in data or 'query_type' in data:
+            query_types = data.get('query_types') or data.get('query_type')
+            if query_types is not None:
+                if isinstance(query_types, str):
+                    query_types = [query_types]
+                for qt in query_types:
+                    if qt not in Query.VALID_QUERY_TYPES:
+                        return jsonify({
+                            'error': 'Invalid query_type',
+                            'message': f'query_type "{qt}" must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
+                        }), 400
+                query.set_query_types(query_types)
 
         db.session.commit()
 

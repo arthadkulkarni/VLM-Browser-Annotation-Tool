@@ -559,14 +559,14 @@ function App() {
     })
   }
 
-  const handleUpdateQueryType = async (queryId, newQueryType) => {
+  const handleUpdateQueryTypes = async (queryId, newQueryTypes) => {
     try {
       const response = await fetch(`/api/queries/${queryId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ query_type: newQueryType }),
+        body: JSON.stringify({ query_types: newQueryTypes }),
       })
 
       if (response.ok) {
@@ -581,11 +581,24 @@ function App() {
         }
       } else {
         const errorData = await response.json()
-        alert(`Failed to update query type: ${errorData.message || 'Unknown error'}`)
+        alert(`Failed to update query types: ${errorData.message || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error updating query type:', error)
+      console.error('Error updating query types:', error)
       alert(`Error: ${error.message}`)
+    }
+  }
+
+  const handleAddQueryType = (queryId, currentTypes, newType) => {
+    if (!currentTypes.includes(newType)) {
+      handleUpdateQueryTypes(queryId, [...currentTypes, newType])
+    }
+    setOpenQueryTypeDropdown(null)
+  }
+
+  const handleRemoveQueryType = (queryId, currentTypes, typeToRemove) => {
+    if (currentTypes.length > 1) {
+      handleUpdateQueryTypes(queryId, currentTypes.filter(t => t !== typeToRemove))
     }
   }
 
@@ -721,7 +734,7 @@ function App() {
               return {
                 query_text: query.query_text,
                 status: query.status,
-                query_type: query.query_type,
+                query_types: query.query_types,
                 annotations: (annotationsData.annotations || []).map(annotation => ({
                   start_timestamp: annotation.start_timestamp,
                   end_timestamp: annotation.end_timestamp,
@@ -866,7 +879,7 @@ function App() {
   "queries": [
     {
       "query_text": "Your query text here",
-      "query_type": "identity",
+      "query_types": ["identity", "static"],
       "annotations": [
         {
           "start_timestamp": "00:00:00",
@@ -886,7 +899,7 @@ function App() {
                     <li><code>title</code>: Video title</li>
                     <li><code>annotator</code>: Name of the person assigned to annotate this video</li>
                     <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
-                    <li><code>query_type</code>: Query category (identity, static, dynamic, causal, synchronous, sequential, periodical, negative)</li>
+                    <li><code>query_types</code>: Array of query categories (identity, static, dynamic, causal, synchronous, sequential, periodical, negative)</li>
                   </ul>
                   <strong>Optional fields:</strong> description, topic, annotations, is_annotated
                 </div>
@@ -1276,26 +1289,64 @@ function App() {
                               {query.query_text}
                             </p>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
-                              {/* Query Type Badge - Click to edit */}
-                              <div data-dropdown="query_type" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                              {/* Query Type Badges - Multiple tags with add/remove */}
+                              {(query.query_types || ['negative']).map((qType, idx) => (
                                 <span
-                                  onClick={() => setOpenQueryTypeDropdown(openQueryTypeDropdown === query.id ? null : query.id)}
+                                  key={`${query.id}-${qType}-${idx}`}
                                   style={{
-                                    padding: '4px 10px',
+                                    padding: '4px 8px',
                                     borderRadius: '12px',
                                     fontSize: '0.7rem',
                                     fontWeight: '600',
                                     textTransform: 'uppercase',
                                     background: '#2196F3',
                                     color: 'white',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px'
+                                  }}
+                                >
+                                  {qType}
+                                  {(query.query_types || ['negative']).length > 1 && (
+                                    <span
+                                      onClick={(e) => {
+                                        e.stopPropagation()
+                                        handleRemoveQueryType(query.id, query.query_types || ['negative'], qType)
+                                      }}
+                                      style={{
+                                        cursor: 'pointer',
+                                        marginLeft: '2px',
+                                        fontSize: '0.8rem',
+                                        lineHeight: 1,
+                                        opacity: 0.8
+                                      }}
+                                      onMouseEnter={(e) => e.target.style.opacity = '1'}
+                                      onMouseLeave={(e) => e.target.style.opacity = '0.8'}
+                                    >
+                                      ×
+                                    </span>
+                                  )}
+                                </span>
+                              ))}
+                              {/* Plus button to add more query types */}
+                              <div data-dropdown="query_type" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  onClick={() => setOpenQueryTypeDropdown(openQueryTypeDropdown === query.id ? null : query.id)}
+                                  style={{
+                                    padding: '4px 8px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    background: '#e0e0e0',
+                                    color: '#666',
                                     cursor: 'pointer',
                                     transition: 'all 0.15s ease',
                                     display: 'inline-block'
                                   }}
-                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
-                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
+                                  onMouseEnter={(e) => { e.target.style.background = '#d0d0d0' }}
+                                  onMouseLeave={(e) => { e.target.style.background = '#e0e0e0' }}
                                 >
-                                  {query.query_type || 'negative'}
+                                  +
                                 </span>
                                 {openQueryTypeDropdown === query.id && (
                                   <div style={{
@@ -1309,29 +1360,32 @@ function App() {
                                     boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
                                     zIndex: 1000,
                                     minWidth: '120px',
-                                    overflow: 'hidden'
+                                    overflow: 'hidden',
+                                    maxHeight: '200px',
+                                    overflowY: 'auto'
                                   }}>
-                                    {QUERY_TYPES.map(qType => (
+                                    {QUERY_TYPES.filter(qType => !(query.query_types || ['negative']).includes(qType)).map(qType => (
                                       <div
                                         key={qType}
-                                        onClick={() => {
-                                          handleUpdateQueryType(query.id, qType)
-                                          setOpenQueryTypeDropdown(null)
-                                        }}
+                                        onClick={() => handleAddQueryType(query.id, query.query_types || ['negative'], qType)}
                                         style={{
                                           padding: '8px 12px',
                                           fontSize: '0.8rem',
                                           cursor: 'pointer',
-                                          background: query.query_type === qType ? '#e3f2fd' : 'white',
-                                          fontWeight: query.query_type === qType ? '600' : '400',
+                                          background: 'white',
                                           transition: 'background 0.1s ease'
                                         }}
                                         onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
-                                        onMouseLeave={(e) => e.target.style.background = query.query_type === qType ? '#e3f2fd' : 'white'}
+                                        onMouseLeave={(e) => e.target.style.background = 'white'}
                                       >
                                         {qType}
                                       </div>
                                     ))}
+                                    {QUERY_TYPES.filter(qType => !(query.query_types || ['negative']).includes(qType)).length === 0 && (
+                                      <div style={{ padding: '8px 12px', fontSize: '0.8rem', color: '#999' }}>
+                                        All types added
+                                      </div>
+                                    )}
                                   </div>
                                 )}
                               </div>
@@ -1453,18 +1507,20 @@ function App() {
                   }}>
                     {selectedQuery.status || 'unverified'}
                   </span>
-                  <span style={{
-                    marginLeft: '8px',
-                    padding: '4px 12px',
-                    borderRadius: '12px',
-                    fontSize: '0.75rem',
-                    fontWeight: '600',
-                    textTransform: 'uppercase',
-                    background: '#2196F3',
-                    color: 'white'
-                  }}>
-                    {selectedQuery.query_type || 'negative'}
-                  </span>
+                  {(selectedQuery.query_types || ['negative']).map((qType, idx) => (
+                    <span key={idx} style={{
+                      marginLeft: idx === 0 ? '8px' : '4px',
+                      padding: '4px 12px',
+                      borderRadius: '12px',
+                      fontSize: '0.75rem',
+                      fontWeight: '600',
+                      textTransform: 'uppercase',
+                      background: '#2196F3',
+                      color: 'white'
+                    }}>
+                      {qType}
+                    </span>
+                  ))}
                 </h2>
               </div>
 

@@ -1,5 +1,6 @@
 from database import db
 from datetime import datetime
+import json
 
 class Video(db.Model):
     """Model for storing video URLs and metadata"""
@@ -53,12 +54,30 @@ class Query(db.Model):
     video_id = db.Column(db.Integer, db.ForeignKey('videos.id'), nullable=False)
     query_text = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(50), default='unverified')  # verified or unverified
-    query_type = db.Column(db.String(50), default='negative')  # Query category type
+    query_types = db.Column(db.Text, default='["negative"]')  # Query category types as JSON array
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     # Relationship to annotations
     annotations = db.relationship('Annotation', backref='query', lazy=True, cascade='all, delete-orphan')
+
+    def get_query_types(self):
+        """Parse query_types JSON string to list"""
+        if not self.query_types:
+            return ['negative']
+        try:
+            return json.loads(self.query_types)
+        except (json.JSONDecodeError, TypeError):
+            return ['negative']
+
+    def set_query_types(self, types_list):
+        """Set query_types from a list"""
+        if isinstance(types_list, list):
+            # Validate all types
+            valid_types = [t for t in types_list if t in self.VALID_QUERY_TYPES]
+            self.query_types = json.dumps(valid_types if valid_types else ['negative'])
+        else:
+            self.query_types = json.dumps(['negative'])
 
     def to_dict(self):
         """Convert model to dictionary for JSON serialization"""
@@ -67,7 +86,7 @@ class Query(db.Model):
             'video_id': self.video_id,
             'query_text': self.query_text,
             'status': self.status,
-            'query_type': self.query_type,
+            'query_types': self.get_query_types(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }
