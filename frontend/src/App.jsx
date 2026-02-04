@@ -86,8 +86,7 @@ function App() {
   const [annotationData, setAnnotationData] = useState({
     start_timestamp: '00:00:00',
     end_timestamp: '00:00:00',
-    notes: '',
-    is_annotated: 'unannotated'
+    notes: ''
   })
   const [jsonPreview, setJsonPreview] = useState(null)
   const [editingQuery, setEditingQuery] = useState(null)
@@ -96,8 +95,7 @@ function App() {
   const [editAnnotationData, setEditAnnotationData] = useState({
     start_timestamp: '',
     end_timestamp: '',
-    notes: '',
-    is_annotated: 'unannotated'
+    notes: ''
   })
 
   // Valid query types
@@ -107,7 +105,7 @@ function App() {
   const [openQueryTypeDropdown, setOpenQueryTypeDropdown] = useState(null) // queryId or null
   const [editingQueryTypeTag, setEditingQueryTypeTag] = useState(null) // { queryId, tagIndex } or null
   const [openStatusDropdown, setOpenStatusDropdown] = useState(null) // queryId or null
-  const [openAnnotationStatusDropdown, setOpenAnnotationStatusDropdown] = useState(null) // annotationId or null
+  const [openAnnotationStatusDropdown, setOpenAnnotationStatusDropdown] = useState(null) // queryId or null (for query-level annotated/unannotated)
 
   const [hoveredAnnotation, setHoveredAnnotation] = useState(null)
   const [showAnnotatorDropdown, setShowAnnotatorDropdown] = useState(false)
@@ -396,8 +394,7 @@ function App() {
       const payload = {
         start_timestamp: annotationData.start_timestamp,
         end_timestamp: annotationData.end_timestamp,
-        notes: annotationData.notes,
-        is_annotated: annotationData.is_annotated
+        notes: annotationData.notes
       }
 
       const response = await fetch(`/api/queries/${selectedQuery.id}/annotations`, {
@@ -412,8 +409,7 @@ function App() {
         setAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: '',
-          is_annotated: 'unannotated'
+          notes: ''
         })
         fetchAnnotations(selectedQuery.id)
       }
@@ -427,8 +423,7 @@ function App() {
     setEditAnnotationData({
       start_timestamp: annotation.start_timestamp || '00:00:00',
       end_timestamp: annotation.end_timestamp || '00:00:00',
-      notes: annotation.notes || '',
-      is_annotated: annotation.is_annotated || 'unannotated'
+      notes: annotation.notes || ''
     })
   }
 
@@ -454,8 +449,7 @@ function App() {
         setEditAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: '',
-          is_annotated: 'unannotated'
+          notes: ''
         })
         fetchAnnotations(selectedQuery.id)
       } else {
@@ -472,8 +466,7 @@ function App() {
     setEditAnnotationData({
       start_timestamp: '00:00:00',
       end_timestamp: '00:00:00',
-      notes: '',
-      is_annotated: 'unannotated'
+      notes: ''
     })
   }
 
@@ -495,9 +488,9 @@ function App() {
     }
   }
 
-  const handleUpdateAnnotationStatus = async (annotationId, newStatus) => {
+  const handleUpdateQueryAnnotationStatus = async (queryId, newStatus) => {
     try {
-      const response = await fetch(`/api/annotations/${annotationId}`, {
+      const response = await fetch(`/api/queries/${queryId}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -505,62 +498,28 @@ function App() {
         body: JSON.stringify({ is_annotated: newStatus }),
       })
 
-      if (response.ok && selectedQuery) {
-        fetchAnnotations(selectedQuery.id)
+      if (response.ok) {
+        const data = await response.json()
+        // Update selectedQuery if it's the one being edited
+        if (selectedQuery && selectedQuery.id === queryId) {
+          setSelectedQuery(data.query)
+        }
+        // Refresh queries list
+        if (selectedVideo) {
+          fetchQueries(selectedVideo.id)
+        }
       } else {
         const errorData = await response.json()
         alert(`Failed to update annotation status: ${errorData.message || 'Unknown error'}`)
       }
     } catch (error) {
-      console.error('Error updating annotation status:', error)
+      console.error('Error updating query annotation status:', error)
       alert(`Error: ${error.message}`)
     }
   }
 
-  const handleMarkQueryVerified = async () => {
-    if (!selectedQuery) return
-
-    // Check if all annotations are marked as "annotated"
-    const unannotatedCount = annotations.filter(a => a.is_annotated !== 'annotated').length
-    if (unannotatedCount > 0) {
-      const confirmed = window.confirm(
-        `${unannotatedCount} annotation${unannotatedCount > 1 ? 's are' : ' is'} still marked as "unannotated".\n\nAre you sure you want to verify this query?`
-      )
-      if (!confirmed) return
-    }
-
-    try {
-      const response = await fetch(`/api/queries/${selectedQuery.id}/status`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: 'verified' }),
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        // Update the selectedQuery with the new status
-        setSelectedQuery(data.query)
-        // Also refresh queries list if we're on that tab
-        fetchQueries(selectedVideo.id)
-      } else {
-        const errorData = await response.json()
-        alert(`Failed to mark query as verified: ${errorData.message || 'Unknown error'}`)
-      }
-    } catch (error) {
-      console.error('Error marking query as verified:', error)
-      alert(`Error: ${error.message}`)
-    }
-  }
-
-  // Sort annotations: unannotated first, then annotated
   const getSortedAnnotations = () => {
-    return [...annotations].sort((a, b) => {
-      const aAnnotated = a.is_annotated === 'annotated' ? 1 : 0
-      const bAnnotated = b.is_annotated === 'annotated' ? 1 : 0
-      return aAnnotated - bAnnotated
-    })
+    return [...annotations]
   }
 
   const handleUpdateQueryTypes = async (queryId, newQueryTypes) => {
@@ -745,12 +704,12 @@ function App() {
               return {
                 query_text: query.query_text,
                 status: query.status,
+                is_annotated: query.is_annotated,
                 query_types: query.query_types,
                 annotations: (annotationsData.annotations || []).map(annotation => ({
                   start_timestamp: annotation.start_timestamp,
                   end_timestamp: annotation.end_timestamp,
-                  notes: annotation.notes,
-                  is_annotated: annotation.is_annotated
+                  notes: annotation.notes
                 }))
               }
             })
@@ -891,12 +850,13 @@ function App() {
     {
       "query_text": "Your query text here",
       "query_types": ["identity", "static"],
+      "is_annotated": "unannotated",
+      "is_verified": "unverified",
       "annotations": [
         {
           "start_timestamp": "00:00:00",
           "end_timestamp": "00:00:05",
-          "notes": "Description of what happens",
-          "is_annotated": "unannotated"
+          "notes": "Description of what happens"
         }
       ]
     }
@@ -912,7 +872,7 @@ function App() {
                     <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
                     <li><code>query_types</code>: Array of query categories (identity, static, dynamic, causal, synchronous, sequential, periodical, negative)</li>
                   </ul>
-                  <strong>Optional fields:</strong> description, topic, annotations, is_annotated
+                  <strong>Optional fields:</strong> description, topic, annotations, is_annotated, is_verified
                 </div>
               </div>
             </div>
@@ -1515,6 +1475,66 @@ function App() {
                                   </div>
                                 )}
                               </div>
+
+                              {/* Annotation Status Badge - Click to edit */}
+                              <div data-dropdown="annotation-status" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
+                                <span
+                                  onClick={() => setOpenAnnotationStatusDropdown(openAnnotationStatusDropdown === query.id ? null : query.id)}
+                                  style={{
+                                    padding: '4px 10px',
+                                    borderRadius: '12px',
+                                    fontSize: '0.7rem',
+                                    fontWeight: '600',
+                                    textTransform: 'uppercase',
+                                    background: query.is_annotated === 'annotated' ? '#4CAF50' : '#9e9e9e',
+                                    color: 'white',
+                                    cursor: 'pointer',
+                                    transition: 'all 0.15s ease',
+                                    display: 'inline-block'
+                                  }}
+                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
+                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
+                                >
+                                  {query.is_annotated || 'unannotated'}
+                                </span>
+                                {openAnnotationStatusDropdown === query.id && (
+                                  <div style={{
+                                    position: 'absolute',
+                                    top: '100%',
+                                    left: 0,
+                                    marginTop: '4px',
+                                    background: 'white',
+                                    border: '1px solid #e0e0e0',
+                                    borderRadius: '8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                                    zIndex: 1000,
+                                    minWidth: '120px',
+                                    overflow: 'hidden'
+                                  }}>
+                                    {['unannotated', 'annotated'].map(status => (
+                                      <div
+                                        key={status}
+                                        onClick={() => {
+                                          handleUpdateQueryAnnotationStatus(query.id, status)
+                                          setOpenAnnotationStatusDropdown(null)
+                                        }}
+                                        style={{
+                                          padding: '8px 12px',
+                                          fontSize: '0.8rem',
+                                          cursor: 'pointer',
+                                          background: query.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white',
+                                          fontWeight: query.is_annotated === status ? '600' : '400',
+                                          transition: 'background 0.1s ease'
+                                        }}
+                                        onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
+                                        onMouseLeave={(e) => e.target.style.background = query.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white'}
+                                      >
+                                        {status}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <span className="query-date">
                               {new Date(query.created_at).toLocaleString()}
@@ -1572,6 +1592,18 @@ function App() {
                     color: 'white'
                   }}>
                     {selectedQuery.status || 'unverified'}
+                  </span>
+                  <span style={{
+                    marginLeft: '8px',
+                    padding: '4px 12px',
+                    borderRadius: '12px',
+                    fontSize: '0.75rem',
+                    fontWeight: '600',
+                    textTransform: 'uppercase',
+                    background: selectedQuery.is_annotated === 'annotated' ? '#4CAF50' : '#9e9e9e',
+                    color: 'white'
+                  }}>
+                    {selectedQuery.is_annotated || 'unannotated'}
                   </span>
                   {(selectedQuery.query_types || ['negative']).map((qType, idx) => (
                     <span
@@ -2046,19 +2078,6 @@ function App() {
                   />
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="is_annotated">Annotation Status:</label>
-                  <select
-                    id="is_annotated"
-                    value={annotationData.is_annotated}
-                    onChange={(e) => setAnnotationData({...annotationData, is_annotated: e.target.value})}
-                    style={{ width: '100%', padding: '8px' }}
-                  >
-                    <option value="unannotated">unannotated</option>
-                    <option value="annotated">annotated</option>
-                  </select>
-                </div>
-
                 <button type="submit">Add Annotation</button>
               </form>
 
@@ -2113,17 +2132,6 @@ function App() {
                               style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
                             />
                           </div>
-                          <div className="form-group">
-                            <label>Status:</label>
-                            <select
-                              value={editAnnotationData.is_annotated || 'unannotated'}
-                              onChange={(e) => setEditAnnotationData({...editAnnotationData, is_annotated: e.target.value})}
-                              style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
-                            >
-                              <option value="unannotated">unannotated</option>
-                              <option value="annotated">annotated</option>
-                            </select>
-                          </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                               className="save-btn"
@@ -2152,67 +2160,8 @@ function App() {
                             {annotation.notes && (
                               <p><strong>Description:</strong> {annotation.notes}</p>
                             )}
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '8px' }}>
-                              {/* Annotation Status Badge - Click to edit */}
-                              <div data-dropdown="annotation-status" style={{ position: 'relative' }} onClick={(e) => e.stopPropagation()}>
-                                <span
-                                  onClick={() => setOpenAnnotationStatusDropdown(openAnnotationStatusDropdown === annotation.id ? null : annotation.id)}
-                                  style={{
-                                    padding: '4px 10px',
-                                    borderRadius: '12px',
-                                    fontSize: '0.7rem',
-                                    fontWeight: '600',
-                                    textTransform: 'uppercase',
-                                    background: annotation.is_annotated === 'annotated' ? '#4CAF50' : '#9e9e9e',
-                                    color: 'white',
-                                    cursor: 'pointer',
-                                    transition: 'all 0.15s ease',
-                                    display: 'inline-block'
-                                  }}
-                                  onMouseEnter={(e) => { e.target.style.opacity = '0.85'; e.target.style.transform = 'scale(1.02)' }}
-                                  onMouseLeave={(e) => { e.target.style.opacity = '1'; e.target.style.transform = 'scale(1)' }}
-                                >
-                                  {annotation.is_annotated || 'unannotated'}
-                                </span>
-                                {openAnnotationStatusDropdown === annotation.id && (
-                                  <div style={{
-                                    position: 'absolute',
-                                    top: '100%',
-                                    left: 0,
-                                    marginTop: '4px',
-                                    background: 'white',
-                                    border: '1px solid #e0e0e0',
-                                    borderRadius: '8px',
-                                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                                    zIndex: 1000,
-                                    minWidth: '120px',
-                                    overflow: 'hidden'
-                                  }}>
-                                    {['unannotated', 'annotated'].map(status => (
-                                      <div
-                                        key={status}
-                                        onClick={() => {
-                                          handleUpdateAnnotationStatus(annotation.id, status)
-                                          setOpenAnnotationStatusDropdown(null)
-                                        }}
-                                        style={{
-                                          padding: '8px 12px',
-                                          fontSize: '0.8rem',
-                                          cursor: 'pointer',
-                                          background: annotation.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white',
-                                          fontWeight: annotation.is_annotated === status ? '600' : '400',
-                                          transition: 'background 0.1s ease'
-                                        }}
-                                        onMouseEnter={(e) => e.target.style.background = '#f5f5f5'}
-                                        onMouseLeave={(e) => e.target.style.background = annotation.is_annotated === status ? (status === 'annotated' ? '#e8f5e9' : '#f5f5f5') : 'white'}
-                                      >
-                                        {status}
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            </div>
+
+
                             <span className="annotation-date">
                               {new Date(annotation.created_at).toLocaleString()}
                             </span>
@@ -2242,23 +2191,23 @@ function App() {
                 )}
               </div>
 
-              {/* Query Confirmation Section */}
+              {/* Query Annotation Status Section */}
               <div style={{
                 marginTop: '2rem',
                 padding: '1.5rem',
-                background: selectedQuery.status === 'verified' ? '#E8F5E9' : '#FFF3E0',
+                background: selectedQuery.is_annotated === 'annotated' ? '#E8F5E9' : '#EFEBE9',
                 borderRadius: '8px',
-                border: `2px solid ${selectedQuery.status === 'verified' ? '#4CAF50' : '#FF9800'}`
+                border: `2px solid ${selectedQuery.is_annotated === 'annotated' ? '#4CAF50' : '#9e9e9e'}`
               }}>
                 <h3 style={{
                   marginTop: 0,
                   marginBottom: '1rem',
-                  color: selectedQuery.status === 'verified' ? '#2E7D32' : '#E65100'
+                  color: selectedQuery.is_annotated === 'annotated' ? '#2E7D32' : '#616161'
                 }}>
-                  {selectedQuery.status === 'verified' ? 'Query Verified' : 'Confirm Annotations'}
+                  {selectedQuery.is_annotated === 'annotated' ? 'Query Annotated' : 'Mark as Annotated'}
                 </h3>
 
-                {selectedQuery.status === 'verified' ? (
+                {selectedQuery.is_annotated === 'annotated' ? (
                   <div style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -2270,7 +2219,7 @@ function App() {
                       <polyline points="22 4 12 14.01 9 11.01"></polyline>
                     </svg>
                     <span style={{ fontSize: '1rem', fontWeight: '500' }}>
-                      This query has been verified. All annotations are confirmed as correct.
+                      This query has been marked as annotated.
                     </span>
                   </div>
                 ) : (
@@ -2280,10 +2229,10 @@ function App() {
                       marginBottom: '1rem',
                       color: '#5D4037'
                     }}>
-                      Review all annotations above. Once you've confirmed they are correct, click the button below to mark this query as verified.
+                      Review all annotations above. Once you've confirmed they are correct, click the button below to mark this query as annotated.
                     </p>
                     <button
-                      onClick={handleMarkQueryVerified}
+                      onClick={() => handleUpdateQueryAnnotationStatus(selectedQuery.id, 'annotated')}
                       style={{
                         background: '#4CAF50',
                         color: 'white',
@@ -2304,7 +2253,7 @@ function App() {
                         e.target.style.transform = 'translateY(0)'
                       }}
                     >
-                      ✓ Confirm & Mark Query as Verified
+                      Mark Query as Annotated
                     </button>
                   </>
                 )}

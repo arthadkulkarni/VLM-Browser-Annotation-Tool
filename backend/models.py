@@ -54,6 +54,7 @@ class Query(db.Model):
     video_id = db.Column(db.Integer, db.ForeignKey('videos.id'), nullable=False)
     query_text = db.Column(db.Text, nullable=False)
     status = db.Column(db.String(50), default='unverified')  # verified or unverified
+    is_annotated = db.Column(db.String(20), default='unannotated')  # annotated or unannotated
     query_types = db.Column(db.Text, default='["negative"]')  # Query category types as JSON array
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -86,6 +87,7 @@ class Query(db.Model):
             'video_id': self.video_id,
             'query_text': self.query_text,
             'status': self.status,
+            'is_annotated': self.is_annotated,
             'query_types': self.get_query_types(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
@@ -109,9 +111,6 @@ class Annotation(db.Model):
     # Description
     notes = db.Column(db.Text, nullable=True)  # Description of what happens (optional)
 
-    # Annotation status
-    is_annotated = db.Column(db.String(20), default='unannotated')  # annotated or unannotated
-
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -123,7 +122,6 @@ class Annotation(db.Model):
             'start_timestamp': self.start_timestamp,
             'end_timestamp': self.end_timestamp,
             'notes': self.notes,
-            'is_annotated': self.is_annotated,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

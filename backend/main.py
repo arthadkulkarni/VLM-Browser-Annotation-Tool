@@ -260,10 +260,22 @@ def submit_video_url():
                                 'message': f'Query "{query_text[:50]}..." has invalid query_type "{qt}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
                             }), 400
 
+                    # Get optional is_annotated from query data
+                    is_annotated = query_item.get('is_annotated', 'unannotated')
+                    if is_annotated not in ['annotated', 'unannotated']:
+                        is_annotated = 'unannotated'
+
+                    # Get optional status from query data (accept 'is_verified' as alias)
+                    status = query_item.get('status') or query_item.get('is_verified', 'unverified')
+                    if status not in ['verified', 'unverified']:
+                        status = 'unverified'
+
                     # Create new query
                     query = Query(
                         video_id=video.id,
-                        query_text=query_text
+                        query_text=query_text,
+                        is_annotated=is_annotated,
+                        status=status
                     )
                     query.set_query_types(query_types)
                     db.session.add(query)
@@ -273,18 +285,12 @@ def submit_video_url():
                 # Process annotations (always add new annotations, even for existing queries)
                 annotations_data = query_item.get('annotations', [])
                 for annotation_item in annotations_data:
-                    # Get optional is_annotated from annotation data
-                    is_annotated = annotation_item.get('is_annotated', 'unannotated')
-                    if is_annotated not in ['annotated', 'unannotated']:
-                        is_annotated = 'unannotated'
-
                     # Notes are optional - create annotation as long as we have timestamp data
                     annotation = Annotation(
                         query_id=query.id,
                         start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                         end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                        notes=annotation_item.get('notes', ''),
-                        is_annotated=is_annotated
+                        notes=annotation_item.get('notes', '')
                     )
                     db.session.add(annotation)
                     created_annotations.append(annotation_item)
@@ -512,10 +518,22 @@ def submit_multiple_videos():
                                     'message': f'Query "{query_text[:50]}..." at video index {idx} has invalid query_type "{qt}". Valid types: {", ".join(Query.VALID_QUERY_TYPES)}'
                                 }), 400
 
+                        # Get optional is_annotated from query data
+                        is_annotated = query_item.get('is_annotated', 'unannotated')
+                        if is_annotated not in ['annotated', 'unannotated']:
+                            is_annotated = 'unannotated'
+
+                        # Get optional status from query data (accept 'is_verified' as alias)
+                        status = query_item.get('status') or query_item.get('is_verified', 'unverified')
+                        if status not in ['verified', 'unverified']:
+                            status = 'unverified'
+
                         # Create new query
                         query = Query(
                             video_id=video.id,
-                            query_text=query_text
+                            query_text=query_text,
+                            is_annotated=is_annotated,
+                            status=status
                         )
                         query.set_query_types(query_types)
                         db.session.add(query)
@@ -525,18 +543,12 @@ def submit_multiple_videos():
                     # Process annotations (always add new annotations, even for existing queries)
                     annotations_data = query_item.get('annotations', [])
                     for annotation_item in annotations_data:
-                        # Get optional is_annotated from annotation data
-                        is_annotated = annotation_item.get('is_annotated', 'unannotated')
-                        if is_annotated not in ['annotated', 'unannotated']:
-                            is_annotated = 'unannotated'
-
                         # Notes are optional - create annotation as long as we have timestamp data
                         annotation = Annotation(
                             query_id=query.id,
                             start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                             end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                            notes=annotation_item.get('notes', ''),
-                            is_annotated=is_annotated
+                            notes=annotation_item.get('notes', '')
                         )
                         db.session.add(annotation)
                         created_annotations.append(annotation_item)
@@ -785,8 +797,16 @@ def create_query(video_id):
                     'message': f'query_type "{qt}" must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
                 }), 400
 
+        # Validate is_annotated if provided
+        is_annotated = data.get('is_annotated', 'unannotated')
+        if is_annotated not in ['annotated', 'unannotated']:
+            return jsonify({
+                'error': 'Invalid is_annotated value',
+                'message': 'is_annotated must be either "annotated" or "unannotated"'
+            }), 400
+
         # Create new query
-        query = Query(video_id=video_id, query_text=query_text)
+        query = Query(video_id=video_id, query_text=query_text, is_annotated=is_annotated)
         query.set_query_types(query_types)
         db.session.add(query)
         db.session.commit()
@@ -867,6 +887,16 @@ def update_query(query_id):
                             'message': f'query_type "{qt}" must be one of: {", ".join(Query.VALID_QUERY_TYPES)}'
                         }), 400
                 query.set_query_types(query_types)
+
+        # Update is_annotated if provided
+        if 'is_annotated' in data:
+            is_annotated = data['is_annotated']
+            if is_annotated not in ['annotated', 'unannotated']:
+                return jsonify({
+                    'error': 'Invalid is_annotated value',
+                    'message': 'is_annotated must be either "annotated" or "unannotated"'
+                }), 400
+            query.is_annotated = is_annotated
 
         db.session.commit()
 
@@ -1004,21 +1034,12 @@ def create_annotation(query_id):
 
         data = request.get_json()
 
-        # Validate is_annotated if provided
-        is_annotated = data.get('is_annotated', 'unannotated')
-        if is_annotated not in ['annotated', 'unannotated']:
-            return jsonify({
-                'error': 'Invalid is_annotated value',
-                'message': 'is_annotated must be either "annotated" or "unannotated"'
-            }), 400
-
         # Create new annotation (notes are optional)
         annotation = Annotation(
             query_id=query_id,
             start_timestamp=data.get('start_timestamp', '00:00:00'),
             end_timestamp=data.get('end_timestamp', '00:00:00'),
-            notes=data.get('notes', ''),
-            is_annotated=is_annotated
+            notes=data.get('notes', '')
         )
         db.session.add(annotation)
         db.session.commit()
@@ -1114,14 +1135,6 @@ def update_annotation(annotation_id):
             annotation.end_timestamp = data['end_timestamp']
         if 'notes' in data:
             annotation.notes = data['notes']
-        if 'is_annotated' in data:
-            is_annotated = data['is_annotated']
-            if is_annotated not in ['annotated', 'unannotated']:
-                return jsonify({
-                    'error': 'Invalid is_annotated value',
-                    'message': 'is_annotated must be either "annotated" or "unannotated"'
-                }), 400
-            annotation.is_annotated = is_annotated
 
         db.session.commit()
 
