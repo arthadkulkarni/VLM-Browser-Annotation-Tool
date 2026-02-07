@@ -111,6 +111,9 @@ class Annotation(db.Model):
     # Description
     notes = db.Column(db.Text, nullable=True)  # Description of what happens (optional)
 
+    # Count of event occurrences
+    count = db.Column(db.Integer, default=0)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -122,6 +125,7 @@ class Annotation(db.Model):
             'start_timestamp': self.start_timestamp,
             'end_timestamp': self.end_timestamp,
             'notes': self.notes,
+            'count': self.count or 0,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'updated_at': self.updated_at.isoformat() if self.updated_at else None
         }

@@ -86,7 +86,8 @@ function App() {
   const [annotationData, setAnnotationData] = useState({
     start_timestamp: '00:00:00',
     end_timestamp: '00:00:00',
-    notes: ''
+    notes: '',
+    count: 0
   })
   const [jsonPreview, setJsonPreview] = useState(null)
   const [editingQuery, setEditingQuery] = useState(null)
@@ -95,7 +96,8 @@ function App() {
   const [editAnnotationData, setEditAnnotationData] = useState({
     start_timestamp: '',
     end_timestamp: '',
-    notes: ''
+    notes: '',
+    count: 0
   })
 
   // Valid query types
@@ -394,7 +396,8 @@ function App() {
       const payload = {
         start_timestamp: annotationData.start_timestamp,
         end_timestamp: annotationData.end_timestamp,
-        notes: annotationData.notes
+        notes: annotationData.notes,
+        count: annotationData.count
       }
 
       const response = await fetch(`/api/queries/${selectedQuery.id}/annotations`, {
@@ -409,7 +412,8 @@ function App() {
         setAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: ''
+          notes: '',
+          count: 0
         })
         fetchAnnotations(selectedQuery.id)
       }
@@ -423,7 +427,8 @@ function App() {
     setEditAnnotationData({
       start_timestamp: annotation.start_timestamp || '00:00:00',
       end_timestamp: annotation.end_timestamp || '00:00:00',
-      notes: annotation.notes || ''
+      notes: annotation.notes || '',
+      count: annotation.count || 0
     })
   }
 
@@ -449,7 +454,8 @@ function App() {
         setEditAnnotationData({
           start_timestamp: '00:00:00',
           end_timestamp: '00:00:00',
-          notes: ''
+          notes: '',
+          count: 0
         })
         fetchAnnotations(selectedQuery.id)
       } else {
@@ -466,7 +472,8 @@ function App() {
     setEditAnnotationData({
       start_timestamp: '00:00:00',
       end_timestamp: '00:00:00',
-      notes: ''
+      notes: '',
+      count: 0
     })
   }
 
@@ -856,7 +863,8 @@ function App() {
         {
           "start_timestamp": "00:00:00",
           "end_timestamp": "00:00:05",
-          "notes": "Description of what happens"
+          "notes": "Description of what happens",
+          "count": 0
         }
       ]
     }
@@ -872,7 +880,7 @@ function App() {
                     <li><code>duration</code>: Video duration in seconds (e.g., 180 for 3 minutes)</li>
                     <li><code>query_types</code>: Array of query categories (identity, static, dynamic, causal, synchronous, sequential, periodical, negative)</li>
                   </ul>
-                  <strong>Optional fields:</strong> description, topic, annotations, is_annotated, is_verified
+                  <strong>Optional fields:</strong> description, topic, annotations, is_annotated, is_verified, count (in annotations)
                 </div>
               </div>
             </div>
@@ -2078,6 +2086,18 @@ function App() {
                   />
                 </div>
 
+                <div className="form-group">
+                  <label htmlFor="count">Count:</label>
+                  <input
+                    type="number"
+                    id="count"
+                    value={annotationData.count}
+                    onChange={(e) => setAnnotationData({...annotationData, count: parseInt(e.target.value) || 0})}
+                    min="0"
+                    style={{ width: '100px' }}
+                  />
+                </div>
+
                 <button type="submit">Add Annotation</button>
               </form>
 
@@ -2132,6 +2152,16 @@ function App() {
                               style={{ width: '100%', padding: '8px', marginBottom: '8px' }}
                             />
                           </div>
+                          <div className="form-group">
+                            <label>Count:</label>
+                            <input
+                              type="number"
+                              value={editAnnotationData.count}
+                              onChange={(e) => setEditAnnotationData({...editAnnotationData, count: parseInt(e.target.value) || 0})}
+                              min="0"
+                              style={{ width: '100px', padding: '8px', marginBottom: '8px' }}
+                            />
+                          </div>
                           <div style={{ display: 'flex', gap: '8px' }}>
                             <button
                               className="save-btn"
@@ -2160,7 +2190,7 @@ function App() {
                             {annotation.notes && (
                               <p><strong>Description:</strong> {annotation.notes}</p>
                             )}
-
+                            <p><strong>Count:</strong> {annotation.count || 0}</p>
 
                             <span className="annotation-date">
                               {new Date(annotation.created_at).toLocaleString()}

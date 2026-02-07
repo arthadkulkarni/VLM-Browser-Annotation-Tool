@@ -290,7 +290,8 @@ def submit_video_url():
                         query_id=query.id,
                         start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                         end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                        notes=annotation_item.get('notes', '')
+                        notes=annotation_item.get('notes', ''),
+                        count=annotation_item.get('count', 0)
                     )
                     db.session.add(annotation)
                     created_annotations.append(annotation_item)
@@ -548,7 +549,8 @@ def submit_multiple_videos():
                             query_id=query.id,
                             start_timestamp=annotation_item.get('start_timestamp', '00:00:00'),
                             end_timestamp=annotation_item.get('end_timestamp', '00:00:00'),
-                            notes=annotation_item.get('notes', '')
+                            notes=annotation_item.get('notes', ''),
+                            count=annotation_item.get('count', 0)
                         )
                         db.session.add(annotation)
                         created_annotations.append(annotation_item)
@@ -1039,7 +1041,8 @@ def create_annotation(query_id):
             query_id=query_id,
             start_timestamp=data.get('start_timestamp', '00:00:00'),
             end_timestamp=data.get('end_timestamp', '00:00:00'),
-            notes=data.get('notes', '')
+            notes=data.get('notes', ''),
+            count=data.get('count', 0)
         )
         db.session.add(annotation)
         db.session.commit()
@@ -1135,6 +1138,8 @@ def update_annotation(annotation_id):
             annotation.end_timestamp = data['end_timestamp']
         if 'notes' in data:
             annotation.notes = data['notes']
+        if 'count' in data:
+            annotation.count = data['count']
 
         db.session.commit()
 
