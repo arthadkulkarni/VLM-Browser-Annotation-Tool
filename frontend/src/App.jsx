@@ -41,6 +41,18 @@ const getVideoEmbedInfo = (url, videoId) => {
     }
   }
 
+  // Bilibili pattern
+  const bilibiliRegex = /bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/
+  const bilibiliMatch = url.match(bilibiliRegex)
+  if (bilibiliMatch) {
+    const bvid = bilibiliMatch[1]
+    return {
+      type: 'bilibili',
+      embedUrl: `https://player.bilibili.com/player.html?bvid=${bvid}&high_quality=1`,
+      thumbnailUrl: null
+    }
+  }
+
   // Check if it's a video file (has video extension)
   const videoExtensions = ['.mp4', '.webm', '.ogg', '.mov', '.avi', '.mkv']
   const isVideoFile = videoExtensions.some(ext => url.toLowerCase().endsWith(ext))
@@ -170,6 +182,9 @@ function App() {
           // For Vimeo, update src with autoplay parameter
           const vimeoId = selectedVideo.url.match(/(?:vimeo\.com\/)(\d+)/)[1]
           iframePlayerRef.current.src = `https://player.vimeo.com/video/${vimeoId}?autoplay=1`
+        } else if (embedInfo.type === 'bilibili' && iframePlayerRef.current) {
+          const bvid = selectedVideo.url.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/)[1]
+          iframePlayerRef.current.src = `https://player.bilibili.com/player.html?bvid=${bvid}&high_quality=1&autoplay=1`
         }
       }, 100)
 
@@ -637,6 +652,11 @@ function App() {
       if (iframePlayerRef.current) {
         const vimeoId = selectedVideo.url.match(/(?:vimeo\.com\/)(\d+)/)[1]
         iframePlayerRef.current.src = `https://player.vimeo.com/video/${vimeoId}#t=${startTimeInSeconds}s&autoplay=1`
+      }
+    } else if (embedInfo.type === 'bilibili') {
+      if (iframePlayerRef.current) {
+        const bvid = selectedVideo.url.match(/bilibili\.com\/video\/(BV[a-zA-Z0-9]+)/)[1]
+        iframePlayerRef.current.src = `https://player.bilibili.com/player.html?bvid=${bvid}&t=${startTimeInSeconds}&high_quality=1&autoplay=1`
       }
     }
   }
@@ -1153,6 +1173,8 @@ function App() {
                             <img src={embedInfo.thumbnailUrl} alt={video.title} />
                           ) : embedInfo.type === 'vimeo' ? (
                             <div className="video-placeholder">Vimeo Video</div>
+                          ) : embedInfo.type === 'bilibili' ? (
+                            <div className="video-placeholder">Bilibili Video</div>
                           ) : (
                             <video
                               src={video.url}
